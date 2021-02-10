@@ -1,0 +1,13 @@
+[package]
+name = "npp-rs"
+version = "0.1.0"
+authors = ["Jan Van Sweevelt <vansweej@gmail.com>"]
+license = "MIT"
+edition = "2018"
+description = "Rust library providing bindings for Nvidia's NPP library"
+
+[dependencies]
+#libc = "0.2"
+
+# Uncomment when working locally
+npp-sys = { path = "../npp-sys" }
