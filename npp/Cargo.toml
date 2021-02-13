@@ -7,7 +7,12 @@ edition = "2018"
 description = "Rust library providing bindings for Nvidia's NPP library"
 
 [dependencies]
-#libc = "0.2"
-
-# Uncomment when working locally
 npp-sys = { path = "../npp-sys" }
+image = "0.23.13"
+
+[dev-dependencies]
+criterion = "0.3.4"
+
+[[bench]]
+name = "img_benchmarks"
+harness = false
