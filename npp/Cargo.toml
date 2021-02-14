@@ -9,6 +9,7 @@ description = "Rust library providing bindings for Nvidia's NPP library"
 [dependencies]
 npp-sys = { path = "../npp-sys" }
 image = "0.23.13"
+cuda-runtime-sys = "0.3.0-alpha.1"
 
 [dev-dependencies]
 criterion = "0.3.4"
