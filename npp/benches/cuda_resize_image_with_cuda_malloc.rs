@@ -1,47 +1,39 @@
 use core::ffi::c_void;
 use criterion::Criterion;
-use cuda_runtime_sys::{cudaMemcpy, cudaMemcpyKind};
+use cuda_runtime_sys::{cudaFree, cudaMalloc, cudaMemcpy, cudaMemcpyKind};
 use image::io::Reader as ImageReader;
-use npp_sys::{
-    nppiFree, nppiMalloc_8u_C3, nppiResize_8u_C3R, Npp8u, NppiInterpolationMode_NPPI_INTER_LINEAR,
-    NppiRect, NppiSize,
-};
+use npp_sys::{nppiResize_8u_C3R, NppiInterpolationMode_NPPI_INTER_LINEAR, NppiRect, NppiSize};
+use std::ptr::null_mut;
 
 // benchmark with rust image crate
-pub fn cuda_resize_benchmark(c: &mut Criterion) {
-    let mut src_stride: i32 = 0;
-    let mut dst_stride: i32 = 0;
+pub fn cuda_resize_benchmark_with_cuda_malloc(c: &mut Criterion) {
+    let mut cuda_src: *mut c_void = null_mut();
+    let mut cuda_dst: *mut c_void = null_mut();
 
     let img = ImageReader::open("test_resources/DSC_0003.JPG")
         .unwrap()
         .decode()
         .unwrap();
     let img_layout = img.as_rgb8().unwrap().sample_layout();
-    println!("layout of img: {:?}", img_layout);
 
-    //allocate cuda memory for the images
-    let mut cuda_src = unsafe {
-        nppiMalloc_8u_C3(
-            img_layout.width as i32,
-            img_layout.height as i32,
-            &mut src_stride,
+    let _rs_src = unsafe {
+        cudaMalloc(
+            &mut cuda_src,
+            (img_layout.width * img_layout.height * 3) as usize,
         )
     };
-
-    let mut cuda_dst = unsafe { nppiMalloc_8u_C3(640, 480, &mut dst_stride) };
+    let _rs_dst = unsafe { cudaMalloc(&mut cuda_dst, 640 * 480 * 3) };
 
     let img_raw_samples = img.as_rgb8().unwrap().as_flat_samples();
     for h in 0..img_layout.height {
         let begin_row = h as usize * img_layout.height_stride;
         let end_row = begin_row + img_layout.height_stride as usize - 1;
 
-        let err = unsafe {
+        let _err = unsafe {
             cudaMemcpy(
                 cuda_src.offset(begin_row as isize) as *mut c_void,
                 img_raw_samples.as_slice()[begin_row..end_row].as_ptr() as *const c_void,
                 img_layout.height_stride,
-                //host_data.as_ptr() as *const c_void,
-                //host_data.len() * size_of::<T>(),
                 cudaMemcpyKind::cudaMemcpyHostToDevice,
             )
         };
@@ -69,16 +61,16 @@ pub fn cuda_resize_benchmark(c: &mut Criterion) {
         height: 480,
     };
 
-    c.bench_function("resize with cuda nppi malloc", |b| {
+    c.bench_function("resize with cuda with cuda malloc", |b| {
         b.iter(|| {
-            let status = unsafe {
+            let _status = unsafe {
                 nppiResize_8u_C3R(
-                    cuda_src,
-                    src_stride,
+                    cuda_src as *mut u8,
+                    img_layout.width as i32 * 3,
                     src_size,
                     src_rect,
-                    cuda_dst,
-                    dst_stride,
+                    cuda_dst as *mut u8,
+                    640 * 3,
                     dst_size,
                     dst_rect,
                     NppiInterpolationMode_NPPI_INTER_LINEAR as i32,
@@ -88,7 +80,7 @@ pub fn cuda_resize_benchmark(c: &mut Criterion) {
     });
 
     unsafe {
-        nppiFree(cuda_dst as *mut c_void);
-        nppiFree(cuda_src as *mut c_void);
+        cudaFree(cuda_dst);
+        cudaFree(cuda_src);
     }
 }
