@@ -1,9 +1,9 @@
 mod cuda_resize_image_with_cuda_malloc;
-mod cuda_resize_image_with_nppiMalloc;
+mod cuda_resize_image_with_nppi_malloc;
 mod rust_resize_image;
 
 use crate::cuda_resize_image_with_cuda_malloc::*;
-use crate::cuda_resize_image_with_nppiMalloc::*;
+use crate::cuda_resize_image_with_nppi_malloc::*;
 use crate::rust_resize_image::*;
 use criterion::{criterion_group, criterion_main};
 
