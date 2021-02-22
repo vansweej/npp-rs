@@ -1,6 +1,6 @@
 use core::ffi::c_void;
 use criterion::Criterion;
-use cuda_runtime_sys::{cudaMemcpy, cudaMemcpy2D, cudaMemcpyKind};
+use cuda_runtime_sys::{cudaMemcpy2D, cudaMemcpyKind};
 use image::io::Reader as ImageReader;
 use npp_sys::{
     nppiFree, nppiMalloc_8u_C3, nppiResize_8u_C3R, NppiInterpolationMode_NPPI_INTER_LINEAR,
