@@ -15,7 +15,7 @@ pub fn cuda_alloc_and_copy_img_to_device_memory_benchmark(c: &mut Criterion) {
 
     c.bench_function("cuda_alloc_and_copy_img_to_device memory", |b| {
         b.iter(|| {
-            let cuda_buf = CudaImage::from(&img);
+            let _cuda_buf = CudaImage::from(&img);
         })
     });
 }
