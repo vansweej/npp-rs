@@ -3,36 +3,46 @@ use image::*;
 use rustacuda::error::*;
 use rustacuda::memory::*;
 use std::convert::TryFrom;
+use std::mem::size_of;
 
 pub struct CudaImage<T> {
     image_buf: DeviceBuffer<T>,
     layout: SampleLayout,
-    color_type: ColorType,
 }
 
-impl TryFrom<&image::DynamicImage> for CudaImage<u8> {
-    type Error = CudaError;
-    fn try_from(img: &image::DynamicImage) -> Result<Self, Self::Error> {
-        match img {
-            DynamicImage::ImageRgb8(rgb_image) => {
-                let sl = rgb_image.sample_layout();
-                let img_size_bytes = sl.width * sl.height * sl.channels as u32;
-                let mut img_cuda_buffer =
-                    unsafe { DeviceBuffer::uninitialized(img_size_bytes as usize)? };
-                img_cuda_buffer.copy_from(rgb_image.as_flat_samples().as_slice())?;
-                Ok(CudaImage {
-                    image_buf: img_cuda_buffer,
-                    layout: sl,
-                    color_type: ColorType::Rgb8,
-                })
-            }
-            _ => Err(CudaError::InvalidImage),
-        }
+impl<T> CudaImage<T> {
+    pub fn new(width: u32, height: u32, ct: ColorType) -> Result<CudaImage<T>, CudaError> {
+        let img_size_bytes =
+            width as usize * height as usize * size_of::<T>() * ct.channel_count() as usize;
+        let img_cuda_buffer = unsafe { DeviceBuffer::zeroed(img_size_bytes)? };
+        let sl = SampleLayout::row_major_packed(
+            size_of::<T>() as u8 * ct.channel_count(),
+            width,
+            height,
+        );
+        Ok(CudaImage {
+            image_buf: img_cuda_buffer,
+            layout: sl,
+        })
     }
 }
 
-impl TryFrom<&CudaImage<u8>> for image::DynamicImage {
+impl TryFrom<&RgbImage> for CudaImage<u8> {
     type Error = CudaError;
+
+    fn try_from(img: &RgbImage) -> Result<Self, Self::Error> {
+        let sl = img.sample_layout();
+        let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
+        Ok(CudaImage {
+            image_buf: img_cuda_buffer,
+            layout: sl,
+        })
+    }
+}
+
+impl TryFrom<&CudaImage<u8>> for RgbImage {
+    type Error = CudaError;
+
     fn try_from(di: &CudaImage<u8>) -> Result<Self, Self::Error> {
         let size = di.layout.width * di.layout.height * di.layout.channels as u32;
         let mut mem_host: Vec<u8> = Vec::with_capacity(size as usize);
@@ -40,16 +50,10 @@ impl TryFrom<&CudaImage<u8>> for image::DynamicImage {
             mem_host.set_len(size as usize);
         }
         di.image_buf.copy_to(&mut mem_host.as_mut_slice())?;
-        let img_buf = match di.color_type {
-            ColorType::Rgb8 => ImageBuffer::<Rgb<u8>, Vec<u8>>::from_vec(
-                di.layout.width,
-                di.layout.height,
-                mem_host,
-            ),
-            _ => None,
-        };
+        let img_buf =
+            ImageBuffer::<Rgb<u8>, Vec<u8>>::from_vec(di.layout.width, di.layout.height, mem_host);
         match img_buf {
-            Some(x) => Ok(DynamicImage::ImageRgb8(x)),
+            Some(x) => Ok(x),
             None => Err(CudaError::UnknownError), // TODO do we really want to map an image error to a CudaError
         }
     }
@@ -60,8 +64,9 @@ mod tests {
     use super::*;
     use image::io::Reader as ImageReader;
     use rustacuda::prelude::*;
+
     #[test]
-    fn test_from_dynamic_image() {
+    fn test_new() {
         rustacuda::init(rustacuda::CudaFlags::empty()).unwrap();
         let device = Device::get_device(0).unwrap();
         let _ctx =
@@ -73,7 +78,31 @@ mod tests {
             .unwrap();
         let img_layout = img.as_rgb8().unwrap().sample_layout();
 
-        let cuda_buf = CudaImage::try_from(&img).unwrap();
+        let new_img =
+            CudaImage::<u8>::new(img_layout.width, img_layout.height, ColorType::Rgb8).unwrap();
+
+        assert_eq!(new_img.layout.channels, img_layout.channels);
+        assert_eq!(new_img.layout.channel_stride, img_layout.channel_stride);
+        assert_eq!(new_img.layout.width, img_layout.width);
+        assert_eq!(new_img.layout.width_stride, img_layout.width_stride);
+        assert_eq!(new_img.layout.height, img_layout.height);
+        assert_eq!(new_img.layout.height_stride, img_layout.height_stride);
+    }
+
+    #[test]
+    fn test_try_from_dynamic_image() {
+        rustacuda::init(rustacuda::CudaFlags::empty()).unwrap();
+        let device = Device::get_device(0).unwrap();
+        let _ctx =
+            Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
+                .unwrap();
+        let img = ImageReader::open("test_resources/DSC_0003.JPG")
+            .unwrap()
+            .decode()
+            .unwrap();
+        let img_layout = img.as_rgb8().unwrap().sample_layout();
+
+        let cuda_buf = CudaImage::<u8>::try_from(img.as_rgb8().unwrap()).unwrap();
 
         assert_eq!(cuda_buf.layout.channels, img_layout.channels);
         assert_eq!(cuda_buf.layout.channel_stride, img_layout.channel_stride);
@@ -86,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn test_from_cudaimage_image() {
+    fn test_try_from_cudaimage_image() {
         rustacuda::init(rustacuda::CudaFlags::empty()).unwrap();
         let device = Device::get_device(0).unwrap();
         let _ctx =
@@ -98,10 +127,10 @@ mod tests {
             .unwrap();
         let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
 
-        let cuda_buf = CudaImage::try_from(&img_src).unwrap();
+        let cuda_buf = CudaImage::<u8>::try_from(img_src.as_rgb8().unwrap()).unwrap();
 
-        let img_dst = DynamicImage::try_from(&cuda_buf).unwrap();
-        let img_layout_dst = img_dst.as_rgb8().unwrap().sample_layout();
+        let img_dst = RgbImage::try_from(&cuda_buf).unwrap();
+        let img_layout_dst = img_dst.sample_layout();
 
         assert_eq!(img_layout_dst.channels, img_layout_src.channels);
         assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
