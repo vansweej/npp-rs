@@ -1,13 +1,13 @@
 use image::flat::SampleLayout;
-use image::*;
+use image::{ColorType, ImageBuffer, Rgb, RgbImage};
 use rustacuda::error::*;
 use rustacuda::memory::*;
 use std::convert::TryFrom;
 use std::mem::size_of;
 
 pub struct CudaImage<T> {
-    image_buf: DeviceBuffer<T>,
-    layout: SampleLayout,
+    pub image_buf: DeviceBuffer<T>,
+    pub layout: SampleLayout,
 }
 
 impl<T> CudaImage<T> {
