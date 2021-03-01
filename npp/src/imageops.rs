@@ -5,7 +5,7 @@ use rustacuda::error::*;
 
 pub fn resize(src: &CudaImage<u8>, width: u32, height: u32) -> Result<CudaImage<u8>, CudaError> {
     let mut dst = match src.layout.channels {
-        3 => CudaImage::<u8>::new(width, height, ColorType::Rgb8),
+        3 => CudaImage::new(width, height, ColorType::Rgb8),
         _ => Err(CudaError::UnknownError),
     }?;
 
@@ -71,7 +71,7 @@ mod tests {
             .unwrap();
         let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
 
-        let cuda_src = CudaImage::<u8>::try_from(img_src.as_rgb8().unwrap()).unwrap();
+        let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
         let cuda_dst = resize(&cuda_src, 640, 480).unwrap();
         let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
 

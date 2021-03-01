@@ -102,7 +102,7 @@ mod tests {
             .unwrap();
         let img_layout = img.as_rgb8().unwrap().sample_layout();
 
-        let cuda_buf = CudaImage::<u8>::try_from(img.as_rgb8().unwrap()).unwrap();
+        let cuda_buf = CudaImage::try_from(img.as_rgb8().unwrap()).unwrap();
 
         assert_eq!(cuda_buf.layout.channels, img_layout.channels);
         assert_eq!(cuda_buf.layout.channel_stride, img_layout.channel_stride);
@@ -127,7 +127,7 @@ mod tests {
             .unwrap();
         let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
 
-        let cuda_buf = CudaImage::<u8>::try_from(img_src.as_rgb8().unwrap()).unwrap();
+        let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
 
         let img_dst = RgbImage::try_from(&cuda_buf).unwrap();
         let img_layout_dst = img_dst.sample_layout();
