@@ -1,14 +1,8 @@
-use crate::image::*;
-use image::ColorType;
+use crate::image::CudaImage;
 use npp_sys::{nppiResize_8u_C3R, NppiInterpolationMode_NPPI_INTER_LINEAR, NppiRect, NppiSize};
 use rustacuda::error::*;
 
-pub fn resize(src: &CudaImage<u8>, width: u32, height: u32) -> Result<CudaImage<u8>, CudaError> {
-    let mut dst = match src.layout.channels {
-        3 => CudaImage::new(width, height, ColorType::Rgb8),
-        _ => Err(CudaError::UnknownError),
-    }?;
-
+pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaError> {
     let src_size: NppiSize = NppiSize {
         width: src.layout.width as i32,
         height: src.layout.height as i32,
@@ -45,7 +39,7 @@ pub fn resize(src: &CudaImage<u8>, width: u32, height: u32) -> Result<CudaImage<
         )
     };
     if status == 0 {
-        Ok(dst)
+        Ok(())
     } else {
         Err(CudaError::UnknownError)
     }
@@ -55,6 +49,7 @@ pub fn resize(src: &CudaImage<u8>, width: u32, height: u32) -> Result<CudaImage<
 mod tests {
     use super::*;
     use image::io::Reader as ImageReader;
+    use image::ColorType;
     use image::RgbImage;
     use rustacuda::prelude::*;
     use std::convert::TryFrom;
@@ -71,8 +66,16 @@ mod tests {
             .unwrap();
         let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
 
+        let mut cuda_dst = match img_layout_src.channels {
+            3 => CudaImage::new(640, 480, ColorType::Rgb8),
+            _ => Err(CudaError::UnknownError),
+        }
+        .unwrap();
+
         let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
-        let cuda_dst = resize(&cuda_src, 640, 480).unwrap();
+
+        let _res = resize(&cuda_src, &mut cuda_dst).unwrap();
+
         let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
 
         let img_layout_dst = img_dst.sample_layout();
