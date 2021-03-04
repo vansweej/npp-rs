@@ -49,8 +49,7 @@ pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaEr
 mod tests {
     use super::*;
     use image::io::Reader as ImageReader;
-    use image::ColorType;
-    use image::RgbImage;
+    use image::{ColorType, RgbImage};
     use rustacuda::prelude::*;
     use std::convert::TryFrom;
     #[test]
