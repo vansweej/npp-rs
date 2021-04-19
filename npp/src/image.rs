@@ -5,6 +5,7 @@ use rustacuda::memory::*;
 use std::convert::TryFrom;
 use std::mem::size_of;
 
+#[derive(Debug)]
 pub struct CudaImage<T> {
     pub image_buf: DeviceBuffer<T>,
     pub layout: SampleLayout,
