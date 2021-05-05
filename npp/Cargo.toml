@@ -16,6 +16,7 @@ rustacuda_derive = "0.1"
 cuda-runtime-sys = "0.3.0-alpha.1"
 
 [dev-dependencies]
+pretty_assertions = "0.7.2"
 criterion = "0.3.4"
 
 [[bench]]
