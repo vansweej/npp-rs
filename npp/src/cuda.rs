@@ -1,7 +1,7 @@
 use rustacuda::error::CudaError;
 use rustacuda::prelude::*;
 
-fn initialize_cuda_device() -> Result<Context, CudaError> {
+pub fn initialize_cuda_device() -> Result<Context, CudaError> {
     rustacuda::init(rustacuda::CudaFlags::empty())?;
     let device = Device::get_device(0)?;
     Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
