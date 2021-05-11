@@ -1,14 +1,15 @@
-use image::flat::SampleLayout;
-use image::{ColorType, ImageBuffer, Rgb, RgbImage};
+use crate::layout::*;
+use image::{ColorType, ImageBuffer, Rgb, RgbImage, RgbaImage};
 use rustacuda::error::*;
 use rustacuda::memory::*;
+use std::convert::From;
 use std::convert::TryFrom;
 use std::mem::size_of;
 
 #[derive(Debug)]
 pub struct CudaImage<T> {
     pub image_buf: DeviceBuffer<T>,
-    pub layout: SampleLayout,
+    pub layout: CudaLayout,
 }
 
 impl<T> CudaImage<T> {
@@ -16,11 +17,8 @@ impl<T> CudaImage<T> {
         let img_size_bytes =
             width as usize * height as usize * size_of::<T>() * ct.channel_count() as usize;
         let img_cuda_buffer = unsafe { DeviceBuffer::zeroed(img_size_bytes)? };
-        let sl = SampleLayout::row_major_packed(
-            size_of::<T>() as u8 * ct.channel_count(),
-            width,
-            height,
-        );
+        let sl =
+            CudaLayout::row_major_packed(size_of::<T>() as u8 * ct.channel_count(), width, height);
         Ok(CudaImage {
             image_buf: img_cuda_buffer,
             layout: sl,
@@ -36,7 +34,20 @@ impl TryFrom<&RgbImage> for CudaImage<u8> {
         let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
         Ok(CudaImage {
             image_buf: img_cuda_buffer,
-            layout: sl,
+            layout: CudaLayout::from(sl),
+        })
+    }
+}
+
+impl TryFrom<&RgbaImage> for CudaImage<u8> {
+    type Error = CudaError;
+
+    fn try_from(img: &RgbaImage) -> Result<Self, Self::Error> {
+        let sl = img.sample_layout();
+        let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
+        Ok(CudaImage {
+            image_buf: img_cuda_buffer,
+            layout: CudaLayout::from(sl),
         })
     }
 }

@@ -7,3 +7,4 @@ mod raw_tests;
 pub mod cuda;
 pub mod image;
 pub mod imageops;
+pub mod layout;
