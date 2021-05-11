@@ -1,23 +1,18 @@
 extern crate bindgen;
 
 #[cfg(target_os = "linux")]
-fn cuda_include_path() -> String {
-    let cudadir = match option_env!("CUDA_INSTALL_DIR") {
-        Some(cuda_dir) => format!("{}/include", cuda_dir),
-        None => "/usr/local/cuda/include".to_string(),
-    };
+fn cuda_path() -> String {
+    String::from(option_env!("CUDA_INSTALL_DIR").unwrap_or("/usr/local/cuda"))
+}
 
-    cudadir
+#[cfg(target_os = "linux")]
+fn cuda_include_path() -> String {
+    format!("{}/include", cuda_path())
 }
 
 #[cfg(target_os = "linux")]
 fn cuda_configuration() {
-    let cudadir = match option_env!("CUDA_INSTALL_DIR") {
-        Some(cuda_dir) => cuda_dir,
-        None => "/usr/local/cuda",
-    };
-
-    println!("cargo:rustc-link-search={}/lib", cudadir);
+    println!("cargo:rustc-link-search={}/lib", cuda_path());
 }
 
 #[cfg(target_os = "windows")]
