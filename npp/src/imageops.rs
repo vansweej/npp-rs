@@ -27,11 +27,11 @@ pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaEr
 
     let status = unsafe {
         nppiResize_8u_C3R(
-            src.image_buf.as_ptr(),
+            src.image_buf.borrow().as_ptr(),
             src.layout.height_stride as i32,
             src_size,
             src_rect,
-            dst.image_buf.as_mut_ptr(),
+            dst.image_buf.borrow_mut().as_mut_ptr(),
             dst.layout.height_stride as i32,
             dst_size,
             dst_rect,

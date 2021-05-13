@@ -2,6 +2,7 @@ use crate::layout::*;
 use image::{ColorType, ImageBuffer, Rgb, RgbImage, RgbaImage};
 use rustacuda::error::*;
 use rustacuda::memory::*;
+use std::cell::RefCell;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::mem::size_of;
@@ -9,7 +10,7 @@ use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct CudaImage<T> {
-    pub image_buf: Rc<DeviceBuffer<T>>,
+    pub image_buf: Rc<RefCell<DeviceBuffer<T>>>,
     pub layout: CudaLayout,
 }
 
@@ -21,7 +22,7 @@ impl<T> CudaImage<T> {
         let sl =
             CudaLayout::row_major_packed(size_of::<T>() as u8 * ct.channel_count(), width, height);
         Ok(CudaImage {
-            image_buf: Rc::new(img_cuda_buffer),
+            image_buf: Rc::new(RefCell::new(img_cuda_buffer)),
             layout: sl,
         })
     }
@@ -34,7 +35,7 @@ impl TryFrom<&RgbImage> for CudaImage<u8> {
         let sl = img.sample_layout();
         let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
         Ok(CudaImage {
-            image_buf: Rc::new(img_cuda_buffer),
+            image_buf: Rc::new(RefCell::new(img_cuda_buffer)),
             layout: CudaLayout::from(sl),
         })
     }
@@ -47,7 +48,7 @@ impl TryFrom<&RgbaImage> for CudaImage<u8> {
         let sl = img.sample_layout();
         let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
         Ok(CudaImage {
-            image_buf: Rc::new(img_cuda_buffer),
+            image_buf: Rc::new(RefCell::new(img_cuda_buffer)),
             layout: CudaLayout::from(sl),
         })
     }
@@ -62,7 +63,9 @@ impl TryFrom<&CudaImage<u8>> for RgbImage {
         unsafe {
             mem_host.set_len(size as usize);
         }
-        di.image_buf.copy_to(&mut mem_host.as_mut_slice())?;
+        di.image_buf
+            .borrow()
+            .copy_to(&mut mem_host.as_mut_slice())?;
         let img_buf =
             ImageBuffer::<Rgb<u8>, Vec<u8>>::from_vec(di.layout.width, di.layout.height, mem_host);
         match img_buf {
