@@ -5,10 +5,11 @@ use rustacuda::memory::*;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::mem::size_of;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct CudaImage<T> {
-    pub image_buf: DeviceBuffer<T>,
+    pub image_buf: Rc<DeviceBuffer<T>>,
     pub layout: CudaLayout,
 }
 
@@ -20,7 +21,7 @@ impl<T> CudaImage<T> {
         let sl =
             CudaLayout::row_major_packed(size_of::<T>() as u8 * ct.channel_count(), width, height);
         Ok(CudaImage {
-            image_buf: img_cuda_buffer,
+            image_buf: Rc::new(img_cuda_buffer),
             layout: sl,
         })
     }
@@ -33,7 +34,7 @@ impl TryFrom<&RgbImage> for CudaImage<u8> {
         let sl = img.sample_layout();
         let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
         Ok(CudaImage {
-            image_buf: img_cuda_buffer,
+            image_buf: Rc::new(img_cuda_buffer),
             layout: CudaLayout::from(sl),
         })
     }
@@ -46,7 +47,7 @@ impl TryFrom<&RgbaImage> for CudaImage<u8> {
         let sl = img.sample_layout();
         let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
         Ok(CudaImage {
-            image_buf: img_cuda_buffer,
+            image_buf: Rc::new(img_cuda_buffer),
             layout: CudaLayout::from(sl),
         })
     }
