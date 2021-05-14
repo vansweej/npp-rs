@@ -26,6 +26,39 @@ impl<T> CudaImage<T> {
             layout: sl,
         })
     }
+
+    /// Get the index of the first point of the subimage
+    fn get_index(&self, x: u32, y: u32) -> u32 {
+        ((y - 1) * self.layout.height_stride as u32) + x
+    }
+
+    /// The bounding rectangle of this image.
+    fn bounds(&self) -> (u32, u32, u32, u32) {
+        (0, 0, self.layout.width, self.layout.height)
+    }
+
+    /// Returns true if this x, y coordinate is contained inside the sub image.
+    /// Only width and height is used of the subimage
+    fn in_sub_bounds(&self, x: u32, y: u32) -> bool {
+        let (ix, iy, iw, ih) = self.bounds();
+        x >= ix && x < ix + iw && y >= iy && y < iy + ih
+    }
+
+    /// Return true if this x, y coordinate is contained inside the sub image with
+    /// regards to owning image.
+    fn in_bounds(&self, x: u32, y: u32) -> bool {
+        false
+    }
+
+    // pub fn sub_image(&self, x: u32, y: u32, width: u32, height: u32) -> Result(CudaImage<T>, CudaError>) {
+    // // chech if x and y are inside img bounds
+    // //if(x < 0 || x > self.layout,width)
+    // // check if widht and heigh stay within image bounds
+    //
+    // // replace img_index and width and height of layout struct
+    //
+    // // return new sub_image
+    // }
 }
 
 impl TryFrom<&RgbImage> for CudaImage<u8> {
@@ -78,6 +111,7 @@ impl TryFrom<&CudaImage<u8>> for RgbImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cuda::initialize_cuda_device;
     use image::io::Reader as ImageReader;
     use rustacuda::prelude::*;
 
@@ -154,5 +188,35 @@ mod tests {
         assert_eq!(img_layout_dst.width_stride, img_layout_src.width_stride);
         assert_eq!(img_layout_dst.height, img_layout_src.height);
         assert_eq!(img_layout_dst.height_stride, img_layout_src.height_stride);
+    }
+
+    #[test]
+    fn test_get_index() {
+        let _ctx = initialize_cuda_device();
+
+        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
+            .unwrap()
+            .decode()
+            .unwrap();
+
+        let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
+        println!("{:?}", cuda_buf.layout);
+        let sub_image_index = cuda_buf.get_index(10, 10);
+        println!("{:?}", sub_image_index);
+        assert_eq!(sub_image_index, 104554);
+    }
+
+    #[test]
+    fn test_in_sub_bounds() {
+        let _ctx = initialize_cuda_device();
+
+        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
+            .unwrap()
+            .decode()
+            .unwrap();
+
+        let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
+
+        assert_eq!(cuda_buf.in_sub_bounds(10, 10), true);
     }
 }
