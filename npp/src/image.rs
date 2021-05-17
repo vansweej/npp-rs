@@ -28,8 +28,8 @@ impl<T> CudaImage<T> {
     }
 
     /// Get the index of the first point of the subimage
-    fn get_index(&self, x: u32, y: u32) -> u32 {
-        ((y - 1) * self.layout.height_stride as u32) + x
+    fn get_index(&self, x: u32, y: u32) -> usize {
+        (((y - 1) * self.layout.height_stride as u32) + x) as usize
     }
 
     /// The bounding rectangle of this image.
@@ -39,26 +39,30 @@ impl<T> CudaImage<T> {
 
     /// Returns true if this x, y coordinate is contained inside the sub image.
     /// Only width and height is used of the subimage
-    fn in_sub_bounds(&self, x: u32, y: u32) -> bool {
+    fn in_bounds(&self, x: u32, y: u32) -> bool {
         let (ix, iy, iw, ih) = self.bounds();
         x >= ix && x < ix + iw && y >= iy && y < iy + ih
     }
 
-    /// Return true if this x, y coordinate is contained inside the sub image with
-    /// regards to owning image.
-    fn in_bounds(&self, x: u32, y: u32) -> bool {
-        false
+    pub fn sub_image(&self, x: u32, y: u32, w: u32, h: u32) -> Result<CudaImage<T>, CudaError> {
+        if self.in_bounds(x, y) && self.in_bounds(x + w, y + h) {
+            let l = CudaLayout {
+                channels: self.layout.channels,
+                channel_stride: self.layout.channel_stride,
+                width: w,
+                width_stride: self.layout.width_stride,
+                height: h,
+                height_stride: self.layout.height_stride,
+                img_index: self.get_index(x, y),
+            };
+            Ok(CudaImage {
+                image_buf: Rc::clone(&self.image_buf),
+                layout: l,
+            })
+        } else {
+            Err(CudaError::UnknownError)
+        }
     }
-
-    // pub fn sub_image(&self, x: u32, y: u32, width: u32, height: u32) -> Result(CudaImage<T>, CudaError>) {
-    // // chech if x and y are inside img bounds
-    // //if(x < 0 || x > self.layout,width)
-    // // check if widht and heigh stay within image bounds
-    //
-    // // replace img_index and width and height of layout struct
-    //
-    // // return new sub_image
-    // }
 }
 
 impl TryFrom<&RgbImage> for CudaImage<u8> {
@@ -113,6 +117,7 @@ mod tests {
     use super::*;
     use crate::cuda::initialize_cuda_device;
     use image::io::Reader as ImageReader;
+    use pretty_assertions::assert_eq;
     use rustacuda::prelude::*;
 
     #[test]
@@ -207,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_in_sub_bounds() {
+    fn test_in_bounds() {
         let _ctx = initialize_cuda_device();
 
         let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
@@ -217,6 +222,7 @@ mod tests {
 
         let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
 
-        assert_eq!(cuda_buf.in_sub_bounds(10, 10), true);
+        assert_eq!(cuda_buf.in_bounds(10, 10), true);
+        assert_eq!(cuda_buf.in_bounds(3972, 500), false);
     }
 }
