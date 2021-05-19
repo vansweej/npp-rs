@@ -100,9 +100,24 @@ impl TryFrom<&CudaImage<u8>> for RgbImage {
         unsafe {
             mem_host.set_len(size as usize);
         }
-        di.image_buf
-            .borrow()
-            .copy_to(&mut mem_host.as_mut_slice())?;
+
+        let mut mem_host_iter =
+            mem_host.chunks_mut(di.layout.width as usize * di.layout.width_stride);
+
+        for row_index in 0..di.layout.height {
+            let ptr = unsafe {
+                di.image_buf.borrow_mut().as_device_ptr().offset(
+                    (di.layout.img_index + (row_index as usize * di.layout.height_stride)) as isize,
+                )
+            };
+            let slice = unsafe {
+                DeviceSlice::from_raw_parts(ptr, di.layout.width as usize * di.layout.width_stride)
+            };
+            let mem_host_slice = mem_host_iter.next().unwrap();
+
+            slice.copy_to(mem_host_slice);
+        }
+
         let img_buf =
             ImageBuffer::<Rgb<u8>, Vec<u8>>::from_vec(di.layout.width, di.layout.height, mem_host);
         match img_buf {
@@ -224,5 +239,18 @@ mod tests {
 
         assert_eq!(cuda_buf.in_bounds(10, 10), true);
         assert_eq!(cuda_buf.in_bounds(3972, 500), false);
+    }
+
+    #[test]
+    fn test_sub_image() {
+        let _ctx = initialize_cuda_device();
+
+        let image1 = CudaImage::<u8>::new(100, 100, ColorType::Rgb8).unwrap();
+        let sub_image = image1.sub_image(5, 5, 10, 10).unwrap();
+
+        let image1_dst = RgbImage::try_from(&image1).unwrap();
+        image1_dst.save("/tmp/image1.png");
+        let sub_image_dst = RgbImage::try_from(&sub_image).unwrap();
+        sub_image_dst.save("/tmp/sub_image.png");
     }
 }

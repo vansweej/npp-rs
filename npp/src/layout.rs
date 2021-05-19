@@ -30,15 +30,6 @@ pub struct CudaLayout {
 impl CudaLayout {
     /// Describe a row-major image packed in all directions.
     ///
-    /// The resulting will surely be `NormalForm::RowMajorPacked`. It can therefore be converted to
-    /// safely to an `ImageBuffer` with a large enough underlying buffer.
-    ///
-    /// ```
-    /// # use image::flat::{NormalForm, SampleLayout};
-    /// let layout = SampleLayout::row_major_packed(3, 640, 480);
-    /// assert!(layout.is_normal(NormalForm::RowMajorPacked));
-    /// ```
-    ///
     /// # Panics
     ///
     /// On platforms where `usize` has the same size as `u32` this panics when the resulting stride
