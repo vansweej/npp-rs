@@ -29,7 +29,8 @@ impl<T> CudaImage<T> {
 
     /// Get the index of the first point of the subimage
     fn get_index(&self, x: u32, y: u32) -> usize {
-        (((y - 1) * self.layout.height_stride as u32) + x) as usize
+        (((y - 1) * self.layout.height_stride as u32) + (x * self.layout.width_stride as u32))
+            as usize
     }
 
     /// The bounding rectangle of this image.
@@ -46,7 +47,7 @@ impl<T> CudaImage<T> {
 
     pub fn sub_image(&self, x: u32, y: u32, w: u32, h: u32) -> Result<CudaImage<T>, CudaError> {
         if self.in_bounds(x, y) && self.in_bounds(x + w, y + h) {
-            let l = CudaLayout {
+            let lay = CudaLayout {
                 channels: self.layout.channels,
                 channel_stride: self.layout.channel_stride,
                 width: w,
@@ -57,7 +58,7 @@ impl<T> CudaImage<T> {
             };
             Ok(CudaImage {
                 image_buf: Rc::clone(&self.image_buf),
-                layout: l,
+                layout: lay,
             })
         } else {
             Err(CudaError::UnknownError)
@@ -115,7 +116,7 @@ impl TryFrom<&CudaImage<u8>> for RgbImage {
             };
             let mem_host_slice = mem_host_iter.next().unwrap();
 
-            slice.copy_to(mem_host_slice);
+            slice.copy_to(mem_host_slice)?;
         }
 
         let img_buf =
@@ -223,7 +224,7 @@ mod tests {
         println!("{:?}", cuda_buf.layout);
         let sub_image_index = cuda_buf.get_index(10, 10);
         println!("{:?}", sub_image_index);
-        assert_eq!(sub_image_index, 104554);
+        assert_eq!(sub_image_index, 104574);
     }
 
     #[test]
@@ -249,8 +250,25 @@ mod tests {
         let sub_image = image1.sub_image(5, 5, 10, 10).unwrap();
 
         let image1_dst = RgbImage::try_from(&image1).unwrap();
-        image1_dst.save("/tmp/image1.png");
+        image1_dst.save("/tmp/image1.png").unwrap();
         let sub_image_dst = RgbImage::try_from(&sub_image).unwrap();
-        sub_image_dst.save("/tmp/sub_image.png");
+        sub_image_dst.save("/tmp/sub_image.png").unwrap();
+    }
+
+    #[test]
+    fn test_sub_image2() {
+        let _ctx = initialize_cuda_device();
+
+        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
+            .unwrap()
+            .decode()
+            .unwrap();
+
+        let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
+
+        let sub_image = cuda_buf.sub_image(1722, 954, 510, 555).unwrap();
+
+        let sub_image_dst = RgbImage::try_from(&sub_image).unwrap();
+        sub_image_dst.save("/tmp/sub_image.png").unwrap();
     }
 }
