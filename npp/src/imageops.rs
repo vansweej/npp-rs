@@ -48,17 +48,13 @@ pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaEr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cuda::initialize_cuda_device;
     use image::io::Reader as ImageReader;
     use image::{ColorType, RgbImage};
-    use rustacuda::prelude::*;
     use std::convert::TryFrom;
     #[test]
     fn test_resize() {
-        rustacuda::init(rustacuda::CudaFlags::empty()).unwrap();
-        let device = Device::get_device(0).unwrap();
-        let _ctx =
-            Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
-                .unwrap();
+        let _ctx = initialize_cuda_device();
         let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
             .unwrap()
             .decode()

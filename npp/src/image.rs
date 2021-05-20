@@ -5,6 +5,7 @@ use rustacuda::memory::*;
 use std::cell::RefCell;
 use std::convert::From;
 use std::convert::TryFrom;
+use std::env::temp_dir;
 use std::mem::size_of;
 use std::rc::Rc;
 
@@ -12,6 +13,10 @@ use std::rc::Rc;
 pub struct CudaImage<T> {
     pub image_buf: Rc<RefCell<DeviceBuffer<T>>>,
     pub layout: CudaLayout,
+}
+
+pub trait Persistable {
+    fn save(&self, filename: &str) -> Result<(), image::ImageError>;
 }
 
 impl<T> CudaImage<T> {
@@ -128,21 +133,28 @@ impl TryFrom<&CudaImage<u8>> for RgbImage {
     }
 }
 
+impl Persistable for CudaImage<u8> {
+    fn save(&self, filename: &str) -> Result<(), image::ImageError> {
+        let mut tmp_dir = temp_dir();
+        tmp_dir.push(filename);
+        tmp_dir.set_extension("png");
+        let path = tmp_dir.to_str().unwrap();
+
+        let sub_image_dst = RgbImage::try_from(self).unwrap();
+        sub_image_dst.save(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cuda::initialize_cuda_device;
     use image::io::Reader as ImageReader;
     use pretty_assertions::assert_eq;
-    use rustacuda::prelude::*;
 
     #[test]
     fn test_new() {
-        rustacuda::init(rustacuda::CudaFlags::empty()).unwrap();
-        let device = Device::get_device(0).unwrap();
-        let _ctx =
-            Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
-                .unwrap();
+        let _ctx = initialize_cuda_device();
         let img = ImageReader::open("test_resources/DSC_0003.JPG")
             .unwrap()
             .decode()
@@ -162,11 +174,7 @@ mod tests {
 
     #[test]
     fn test_try_from_dynamic_image() {
-        rustacuda::init(rustacuda::CudaFlags::empty()).unwrap();
-        let device = Device::get_device(0).unwrap();
-        let _ctx =
-            Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
-                .unwrap();
+        let _ctx = initialize_cuda_device();
         let img = ImageReader::open("test_resources/DSC_0003.JPG")
             .unwrap()
             .decode()
@@ -187,11 +195,8 @@ mod tests {
 
     #[test]
     fn test_try_from_cudaimage_image() {
-        rustacuda::init(rustacuda::CudaFlags::empty()).unwrap();
-        let device = Device::get_device(0).unwrap();
-        let _ctx =
-            Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
-                .unwrap();
+        let _ctx = initialize_cuda_device();
+
         let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
             .unwrap()
             .decode()
@@ -221,9 +226,7 @@ mod tests {
             .unwrap();
 
         let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
-        println!("{:?}", cuda_buf.layout);
         let sub_image_index = cuda_buf.get_index(10, 10);
-        println!("{:?}", sub_image_index);
         assert_eq!(sub_image_index, 104574);
     }
 
@@ -247,12 +250,10 @@ mod tests {
         let _ctx = initialize_cuda_device();
 
         let image1 = CudaImage::<u8>::new(100, 100, ColorType::Rgb8).unwrap();
-        let sub_image = image1.sub_image(5, 5, 10, 10).unwrap();
+        let sub_image1 = image1.sub_image(5, 5, 10, 10).unwrap();
 
-        let image1_dst = RgbImage::try_from(&image1).unwrap();
-        image1_dst.save("/tmp/image1.png").unwrap();
-        let sub_image_dst = RgbImage::try_from(&sub_image).unwrap();
-        sub_image_dst.save("/tmp/sub_image.png").unwrap();
+        image1.save("image1").unwrap();
+        sub_image1.save("sub_image1").unwrap();
     }
 
     #[test]
@@ -266,9 +267,8 @@ mod tests {
 
         let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
 
-        let sub_image = cuda_buf.sub_image(1722, 954, 510, 555).unwrap();
+        let sub_image2 = cuda_buf.sub_image(1722, 954, 510, 555).unwrap();
 
-        let sub_image_dst = RgbImage::try_from(&sub_image).unwrap();
-        sub_image_dst.save("/tmp/sub_image.png").unwrap();
+        sub_image2.save("sub_image2").unwrap();
     }
 }
