@@ -23,21 +23,27 @@ pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaEr
         width: dst.width() as i32,
         height: dst.height() as i32,
     };
+    let src_ptr = unsafe {
+        src.image_buf
+            .borrow_mut()
+            .as_device_ptr()
+            .offset(src.layout.img_index as isize)
+            .as_raw()
+    };
+    let dst_ptr = unsafe {
+        dst.image_buf
+            .borrow_mut()
+            .as_device_ptr()
+            .offset(dst.layout.img_index as isize)
+            .as_raw_mut()
+    };
     let status = unsafe {
         nppiResize_8u_C3R(
-            src.image_buf
-                .borrow_mut()
-                .as_device_ptr()
-                .offset(src.layout.img_index as isize)
-                .as_raw(),
+            src_ptr,
             src.layout.height_stride as i32,
             src_size,
             src_rect,
-            dst.image_buf
-                .borrow_mut()
-                .as_device_ptr()
-                .offset(dst.layout.img_index as isize)
-                .as_raw_mut(),
+            dst_ptr,
             dst.layout.height_stride as i32,
             dst_size,
             dst_rect,
@@ -111,15 +117,40 @@ mod tests {
 
         resize(&sub_cuda_src, &mut cuda_dst).unwrap();
 
-        cuda_dst.save("resize1").unwrap();
+        sub_cuda_src.save("resize2").unwrap();
 
         let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
-
         let img_layout_dst = img_dst.sample_layout();
 
         assert_eq!(img_layout_dst.channels, img_layout_src.channels);
         assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
         assert_eq!(img_layout_dst.width, 640);
         assert_eq!(img_layout_dst.height, 480);
+    }
+
+    #[test]
+    fn test_resize3() {
+        let _ctx = initialize_cuda_device();
+        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
+            .unwrap()
+            .decode()
+            .unwrap();
+        let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
+
+        let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
+        let sub_cuda_src1 = cuda_src.sub_image(1722, 954, 510, 555).unwrap();
+        let mut sub_cuda_src2 = cuda_src.sub_image(10, 10, 510, 555).unwrap();
+
+        resize(&sub_cuda_src1, &mut sub_cuda_src2).unwrap();
+
+        cuda_src.save("resize3").unwrap();
+
+        let img_dst = RgbImage::try_from(&sub_cuda_src2).unwrap();
+        let img_layout_dst = img_dst.sample_layout();
+
+        assert_eq!(img_layout_dst.channels, img_layout_src.channels);
+        assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
+        assert_eq!(img_layout_dst.width, 510);
+        assert_eq!(img_layout_dst.height, 555);
     }
 }
