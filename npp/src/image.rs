@@ -32,6 +32,21 @@ impl<T> CudaImage<T> {
         })
     }
 
+    /// The width and height of this image.
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.layout.width, self.layout.height)
+    }
+
+    /// The width of this image.
+    pub fn width(&self) -> u32 {
+        self.layout.width
+    }
+
+    /// The height of this image.
+    pub fn height(&self) -> u32 {
+        self.layout.height
+    }
+
     /// Get the index of the first point of the subimage
     fn get_index(&self, x: u32, y: u32) -> usize {
         (((y - 1) * self.layout.height_stride as u32) + (x * self.layout.width_stride as u32))
