@@ -269,6 +269,9 @@ mod tests {
 
         image1.save("image1").unwrap();
         sub_image1.save("sub_image1").unwrap();
+
+        assert_eq!(sub_image1.width(), 10);
+        assert_eq!(sub_image1.height(), 10);
     }
 
     #[test]
@@ -285,5 +288,7 @@ mod tests {
         let sub_image2 = cuda_buf.sub_image(1722, 954, 510, 555).unwrap();
 
         sub_image2.save("sub_image2").unwrap();
+
+        assert_eq!(sub_image2.dimensions(), (510, 555));
     }
 }
