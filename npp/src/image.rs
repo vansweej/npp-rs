@@ -38,33 +38,53 @@ impl<T> CudaImage<T> {
     }
 
     /// The width of this image.
+    #[inline(always)]
     pub fn width(&self) -> u32 {
         self.layout.width
     }
 
     /// The height of this image.
+    #[inline(always)]
     pub fn height(&self) -> u32 {
         self.layout.height
     }
 
+    /// number of channels of this image
+    #[inline(always)]
+    pub fn channels(&self) -> u8 {
+        self.layout.channels
+    }
+
     /// Get the index of the first point of the subimage
+    #[inline(always)]
     fn get_index(&self, x: u32, y: u32) -> usize {
-        (((y - 1) * self.layout.height_stride as u32) + (x * self.layout.width_stride as u32))
-            as usize
+        ((y * self.layout.height_stride as u32) + (x * self.layout.width_stride as u32)) as usize
+    }
+
+    /// get the x, y coordinates from the img_index
+    #[inline(always)]
+    fn get_start_point(&self) -> (u32, u32) {
+        let y = self.layout.img_index / self.layout.height_stride;
+        let x = (self.layout.img_index % self.layout.height_stride) / self.layout.channels as usize;
+        (x as u32, y as u32)
     }
 
     /// The bounding rectangle of this image.
+    #[inline(always)]
     fn bounds(&self) -> (u32, u32, u32, u32) {
         (0, 0, self.layout.width, self.layout.height)
     }
 
     /// Returns true if this x, y coordinate is contained inside the sub image.
     /// Only width and height is used of the subimage
+    #[inline(always)]
     fn in_bounds(&self, x: u32, y: u32) -> bool {
         let (ix, iy, iw, ih) = self.bounds();
         x >= ix && x < ix + iw && y >= iy && y < iy + ih
     }
 
+    /// returns subimage from self. x and y are 1 indexed and the cuda buffers
+    /// reference count is incremented (buffer is not copied)
     pub fn sub_image(&self, x: u32, y: u32, w: u32, h: u32) -> Result<CudaImage<T>, CudaError> {
         if self.in_bounds(x, y) && self.in_bounds(x + w, y + h) {
             let lay = CudaLayout {
@@ -242,7 +262,7 @@ mod tests {
 
         let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
         let sub_image_index = cuda_buf.get_index(10, 10);
-        assert_eq!(sub_image_index, 104574);
+        assert_eq!(sub_image_index, 116190);
     }
 
     #[test]
@@ -290,5 +310,19 @@ mod tests {
         sub_image2.save("sub_image2").unwrap();
 
         assert_eq!(sub_image2.dimensions(), (510, 555));
+    }
+
+    #[test]
+    fn test_get_start_point() {
+        let _ctx = initialize_cuda_device();
+
+        let image1 = CudaImage::<u8>::new(100, 100, ColorType::Rgb8).unwrap();
+        let sub_image1 = image1.sub_image(5, 5, 10, 10).unwrap();
+
+        assert_eq!(image1.get_start_point(), (0, 0));
+
+        assert_eq!(sub_image1.layout.height_stride, 300);
+        assert_eq!(sub_image1.layout.img_index, 1515);
+        assert_eq!(sub_image1.get_start_point(), (5, 5));
     }
 }
