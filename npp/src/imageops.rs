@@ -11,7 +11,6 @@ pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaEr
         width: dst.width() as i32,
         height: dst.height() as i32,
     };
-
     let src_rect: NppiRect = NppiRect {
         x: 0,
         y: 0,
@@ -24,14 +23,21 @@ pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaEr
         width: dst.width() as i32,
         height: dst.height() as i32,
     };
-
     let status = unsafe {
         nppiResize_8u_C3R(
-            src.image_buf.borrow().as_ptr(),
+            src.image_buf
+                .borrow_mut()
+                .as_device_ptr()
+                .offset(src.layout.img_index as isize)
+                .as_raw(),
             src.layout.height_stride as i32,
             src_size,
             src_rect,
-            dst.image_buf.borrow_mut().as_mut_ptr(),
+            dst.image_buf
+                .borrow_mut()
+                .as_device_ptr()
+                .offset(dst.layout.img_index as isize)
+                .as_raw_mut(),
             dst.layout.height_stride as i32,
             dst_size,
             dst_rect,
@@ -55,7 +61,7 @@ mod tests {
     use std::convert::TryFrom;
 
     #[test]
-    fn test_resize() {
+    fn test_resize1() {
         let _ctx = initialize_cuda_device();
         let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
             .unwrap()
@@ -72,6 +78,38 @@ mod tests {
         let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
 
         resize(&cuda_src, &mut cuda_dst).unwrap();
+
+        cuda_dst.save("resize1").unwrap();
+
+        let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
+
+        let img_layout_dst = img_dst.sample_layout();
+
+        assert_eq!(img_layout_dst.channels, img_layout_src.channels);
+        assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
+        assert_eq!(img_layout_dst.width, 640);
+        assert_eq!(img_layout_dst.height, 480);
+    }
+
+    #[test]
+    fn test_resize2() {
+        let _ctx = initialize_cuda_device();
+        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
+            .unwrap()
+            .decode()
+            .unwrap();
+        let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
+
+        let mut cuda_dst = match img_layout_src.channels {
+            3 => CudaImage::new(640, 480, ColorType::Rgb8),
+            _ => Err(CudaError::UnknownError),
+        }
+        .unwrap();
+
+        let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
+        let sub_cuda_src = cuda_src.sub_image(1722, 954, 510, 555).unwrap();
+
+        resize(&sub_cuda_src, &mut cuda_dst).unwrap();
 
         cuda_dst.save("resize1").unwrap();
 

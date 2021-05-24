@@ -63,7 +63,7 @@ impl<T> CudaImage<T> {
 
     /// get the x, y coordinates from the img_index
     #[inline(always)]
-    fn get_start_point(&self) -> (u32, u32) {
+    pub fn get_start_point(&self) -> (u32, u32) {
         let y = self.layout.img_index / self.layout.height_stride;
         let x = (self.layout.img_index % self.layout.height_stride) / self.layout.channels as usize;
         (x as u32, y as u32)
@@ -83,7 +83,7 @@ impl<T> CudaImage<T> {
         x >= ix && x < ix + iw && y >= iy && y < iy + ih
     }
 
-    /// returns subimage from self. x and y are 1 indexed and the cuda buffers
+    /// returns a sub image from self. x and y are 1 indexed and the cuda buffers
     /// reference count is incremented (buffer is not copied)
     pub fn sub_image(&self, x: u32, y: u32, w: u32, h: u32) -> Result<CudaImage<T>, CudaError> {
         if self.in_bounds(x, y) && self.in_bounds(x + w, y + h) {
