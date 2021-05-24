@@ -4,25 +4,25 @@ use rustacuda::error::*;
 
 pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaError> {
     let src_size: NppiSize = NppiSize {
-        width: src.layout.width as i32,
-        height: src.layout.height as i32,
+        width: src.width() as i32,
+        height: src.height() as i32,
     };
     let dst_size: NppiSize = NppiSize {
-        width: dst.layout.width as i32,
-        height: dst.layout.height as i32,
+        width: dst.width() as i32,
+        height: dst.height() as i32,
     };
 
     let src_rect: NppiRect = NppiRect {
         x: 0,
         y: 0,
-        width: src.layout.width as i32,
-        height: src.layout.height as i32,
+        width: src.width() as i32,
+        height: src.height() as i32,
     };
     let dst_rect: NppiRect = NppiRect {
         x: 0,
         y: 0,
-        width: dst.layout.width as i32,
-        height: dst.layout.height as i32,
+        width: dst.width() as i32,
+        height: dst.height() as i32,
     };
 
     let status = unsafe {
@@ -49,9 +49,11 @@ pub fn resize(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaEr
 mod tests {
     use super::*;
     use crate::cuda::initialize_cuda_device;
+    use crate::image::Persistable;
     use image::io::Reader as ImageReader;
     use image::{ColorType, RgbImage};
     use std::convert::TryFrom;
+
     #[test]
     fn test_resize() {
         let _ctx = initialize_cuda_device();
@@ -69,7 +71,9 @@ mod tests {
 
         let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
 
-        let _res = resize(&cuda_src, &mut cuda_dst).unwrap();
+        resize(&cuda_src, &mut cuda_dst).unwrap();
+
+        cuda_dst.save("resize1").unwrap();
 
         let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
 
