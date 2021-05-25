@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: ./ci/install_server.sh
+      - run: ls /usr/local  
   dump:
     needs: setup
     runs-on: ubuntu-18.04
