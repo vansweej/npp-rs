@@ -10,8 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  setup:
     runs-on: ubuntu-18.04
     steps:
-      - name: Build
-      - run: cargo build --verbose
+      - run: ./ci/install_server.sh
