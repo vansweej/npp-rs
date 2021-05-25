@@ -19,7 +19,7 @@ jobs:
     needs: setup
     runs-on: ubuntu-18.04
     steps:
-      - run: ls /usr/local/cuda-10.2
+      - run: ls /usr/local
   build:
     needs: setup
     runs-on: ubuntu-18.04
