@@ -22,7 +22,5 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      env:
-        CUDA_INSTALL_DIR: /usr/local/cuda-10.2
       run: cargo build --verbose
     
