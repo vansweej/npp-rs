@@ -11,15 +11,12 @@ env:
 
 jobs:
   setup:
-    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
-      - name: Setup Server
       - run: ./ci/install_server.sh
   build:
     needs: setup
     runs-on: ubuntu-18.04
     steps:
-      - uses: actions/checkout@v2
       - name: Build
       - run: cargo build --verbose
