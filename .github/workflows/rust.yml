@@ -20,6 +20,6 @@ jobs:
     needs: setup
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v2
-    - name: Build
-    - run: cargo build --verbose
+      - uses: actions/checkout@v2
+      - name: Build
+      - run: cargo build --verbose
