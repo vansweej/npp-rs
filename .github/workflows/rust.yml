@@ -8,17 +8,19 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  CUDA_INSTALL_DIR: /usr/local/cuda-10.2
-
+  
 jobs:
   setup:
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
+      - name: Setup Server
       - run: ./ci/install_server.sh
   build:
     needs: setup
     runs-on: ubuntu-18.04
+    env:
+      CUDA_INSTALL_DIR: /usr/local/cuda-10.2
     steps:
     - uses: actions/checkout@v2
     - name: Build
