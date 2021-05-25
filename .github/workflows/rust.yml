@@ -12,7 +12,7 @@ env:
 
 jobs:
   setup:
-    runs-on: ubuntu-18-04
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - run: ./ci/install_server.sh
