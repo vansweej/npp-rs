@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  CARGO_TERM_COLOR: alwaiys
+  CARGO_TERM_COLOR: always
   CUDAL_INSTALL_DIR: /usr/local/cuda-10.2
 
 jobs:
