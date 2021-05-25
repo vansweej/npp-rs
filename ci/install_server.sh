@@ -81,4 +81,6 @@ sudo dpkg -i cuda-compiler-10-2_10.2.89-1_amd64.deb
 
 rm *.deb
 
+sudo ln -s /usr/local/cuda-10.2/lib64 /usr/local/cuda-10.2/lib
+
 sudo apt-get update
