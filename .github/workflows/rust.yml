@@ -17,5 +17,7 @@ jobs:
   build:
     needs: setup
     runs-on: ubuntu-18.04
+    env:
+      CUDA_INSTALL_DIR: /usr/local/cuda-10.2
     steps:
       - run: cargo build
