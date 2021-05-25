@@ -11,11 +11,6 @@ sudo dpkg -i cuda-misc-headers-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvdisasm-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-nvdisasm-10-2_10.2.89-1_amd64.deb
 
-
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nsight-10-2_10.2.89-1_amd64.deb
-sudo dpkg -i cuda-nsight-10-2_10.2.89-1_amd64.deb
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvvp-10-2_10.2.89-1_amd64.deb
-sudo dpkg -i cuda-nvvp-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvrtc-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-nvrtc-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvrtc-dev-10-2_10.2.89-1_amd64.deb
@@ -51,7 +46,10 @@ sudo dpkg -i cuda-nvgraph-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvgraph-dev-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-nvgraph-dev-10-2_10.2.89-1_amd64.deb
 
-
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvcc-10-2_10.2.89-1_amd64.deb
+sudo dpkg -i cuda-nvcc-10-2_10.2.89-1_amd64.deb
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-cuobjdump-10-2_10.2.89-1_amd64.deb
+sudo dpkg -i cuda-cuobjdump-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-gdb-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-gdb-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvprof-10-2_10.2.89-1_amd64.deb
@@ -73,10 +71,6 @@ sudo dpkg -i cuda-cupti-dev-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvtx-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-nvtx-10-2_10.2.89-1_amd64.deb
 
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvcc-10-2_10.2.89-1_amd64.deb
-sudo dpkg -i cuda-nvcc-10-2_10.2.89-1_amd64.deb
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-cuobjdump-10-2_10.2.89-1_amd64.deb
-sudo dpkg -i cuda-cuobjdump-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-nvprune-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-nvprune-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-command-line-tools-10-2_10.2.89-1_amd64.deb
@@ -84,5 +78,7 @@ sudo dpkg -i cuda-command-line-tools-10-2_10.2.89-1_amd64.deb
 
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-compiler-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-compiler-10-2_10.2.89-1_amd64.deb
+
+rm *.deb
 
 sudo apt-get update
