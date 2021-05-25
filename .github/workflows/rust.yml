@@ -22,4 +22,4 @@ jobs:
       CUDA_INSTALL_DIR: /usr/local/cuda-10.2
     steps:
       - uses: actions/checkout@v2
-      - run: export $CUDA_INSTALL_DIR && cargo build
+      - run: export CUDA_INSTALL_DIR=$CUDA_INSTALL_DIR && cargo build
