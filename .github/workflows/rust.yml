@@ -1,0 +1,26 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  CUDA_INSTALL_DIR: /usr/local/cuda-10.2
+
+jobs:
+  setup:
+    runs-on: ubuntu-18-04
+    steps:
+      - uses: actions/checkout@v2
+      - run: ./ci/install_server.sh
+  build:
+    needs: setup
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose
+    
