@@ -15,6 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: ./ci/install_server.sh
+  dump:
+    runs-on: ubuntu-18.04
+    steps:
+      - run: ls /usr/local/cuda-10.2
   build:
     needs: setup
     runs-on: ubuntu-18.04
