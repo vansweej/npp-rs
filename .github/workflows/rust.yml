@@ -14,3 +14,8 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - run: ./ci/install_server.sh
+  build:
+    needs: setup
+    runs-on: ubuntu-18.04
+    steps:
+      - run: cargo build
