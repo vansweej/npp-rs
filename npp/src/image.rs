@@ -80,11 +80,11 @@ impl<T> CudaImage<T> {
     #[inline(always)]
     fn in_bounds(&self, x: u32, y: u32) -> bool {
         let (ix, iy, iw, ih) = self.bounds();
-        x >= ix && x < ix + iw && y >= iy && y < iy + ih
+        x >= ix && x <= ix + iw && y >= iy && y <= iy + ih
     }
 
-    /// returns a sub image from self. x and y are 1 indexed and the cuda buffers
-    /// reference count is incremented (buffer is not copied)
+    /// returns a sub image from self. x and y are 0 based indexed. The cuda buffers
+    /// reference count is incremented but not copied.
     pub fn sub_image(&self, x: u32, y: u32, w: u32, h: u32) -> Result<CudaImage<T>, CudaError> {
         if self.in_bounds(x, y) && self.in_bounds(x + w, y + h) {
             let lay = CudaLayout {
@@ -255,14 +255,11 @@ mod tests {
     fn test_get_index() {
         let _ctx = initialize_cuda_device();
 
-        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
-            .unwrap()
-            .decode()
-            .unwrap();
-
-        let cuda_buf = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
-        let sub_image_index = cuda_buf.get_index(10, 10);
-        assert_eq!(sub_image_index, 116190);
+        let image = CudaImage::<u8>::new(100, 100, ColorType::Rgb8).unwrap();
+        let sub_image_index = image.get_index(0, 0);
+        assert_eq!(sub_image_index, 0);
+        let sub_image_index = image.get_index(10, 10);
+        assert_eq!(sub_image_index, 3030);
     }
 
     #[test]
