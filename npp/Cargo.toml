@@ -1,10 +1,11 @@
 [package]
 name = "npp-rs"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Jan Van Sweevelt <vansweej@gmail.com>"]
 license = "MIT"
 edition = "2018"
 description = "Rust library providing bindings for Nvidia's NPP library"
+repository = "git@github.com:vansweej/npp-rs.git"
 
 [dependencies]
 npp-sys = { path = "../npp-sys" }
@@ -12,12 +13,11 @@ image = "0.23.13"
 rustacuda = "0.1"
 rustacuda_core = "0.1"
 rustacuda_derive = "0.1"
-#cuda-driver-sys = "0.3.0"
-cuda-runtime-sys = "0.3.0-alpha.1"
 
 [dev-dependencies]
 pretty_assertions = "0.7.2"
 criterion = "0.3.4"
+cuda-runtime-sys = "0.3.0-alpha.1"
 
 [[bench]]
 name = "img_benchmarks"

@@ -11,8 +11,8 @@ use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct CudaImage<T> {
-    pub image_buf: Rc<RefCell<DeviceBuffer<T>>>,
-    pub layout: CudaLayout,
+    pub(in crate) image_buf: Rc<RefCell<DeviceBuffer<T>>>,
+    pub(in crate) layout: CudaLayout,
 }
 
 pub trait Persistable {

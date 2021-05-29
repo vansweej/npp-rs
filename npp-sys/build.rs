@@ -13,6 +13,7 @@ fn cuda_include_path() -> String {
 #[cfg(target_os = "linux")]
 fn cuda_configuration() {
     println!("cargo:rustc-link-search={}/lib", cuda_path());
+    println!("cargo:rustc-link-search={}/lib64", cuda_path());
 }
 
 #[cfg(target_os = "windows")]
