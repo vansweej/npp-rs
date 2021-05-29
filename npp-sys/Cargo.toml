@@ -7,7 +7,7 @@ license = "MIT"
 build = "build.rs"
 readme = "README.md"
 description = "Rust library providing bindings for Nvidia's NPP library"
-repository = "git@github.com:vansweej/npp-rs.git"
+repository = "https://github.com/vansweej/npp-rs.git"
 categories = ["external-ffi-bindings", "computer-vision"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
