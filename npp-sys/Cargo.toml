@@ -15,4 +15,4 @@ categories = ["external-ffi-bindings", "computer-vision"]
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.57"
+bindgen = "0.58.1"

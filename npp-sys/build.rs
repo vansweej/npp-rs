@@ -1,4 +1,6 @@
 extern crate bindgen;
+use std::env;
+use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
 fn cuda_path() -> String {
@@ -98,7 +100,8 @@ fn main() {
         // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
-        .write_to_file("src/bindings.rs")
+        .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
 }
