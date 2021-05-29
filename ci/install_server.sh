@@ -1,8 +1,5 @@
 set -ex
 
-#sudo apt install -y default-jre
-#sudo apt install -y libcairo2
-
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-license-10-2_10.2.89-1_amd64.deb
 sudo dpkg -i cuda-license-10-2_10.2.89-1_amd64.deb
 wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-misc-headers-10-2_10.2.89-1_amd64.deb
@@ -80,7 +77,5 @@ wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/
 sudo dpkg -i cuda-compiler-10-2_10.2.89-1_amd64.deb
 
 rm *.deb
-
-sudo ln -s /usr/local/cuda-10.2/lib64 /usr/local/cuda-10.2/lib
 
 sudo apt-get update

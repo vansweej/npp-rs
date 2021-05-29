@@ -4,8 +4,10 @@ version = "0.0.1"
 authors = ["Jan Van Sweevelt <vansweej@gmail.com>"]
 license = "MIT"
 edition = "2018"
+readme = "README.md"
 description = "Rust library providing bindings for Nvidia's NPP library"
 repository = "git@github.com:vansweej/npp-rs.git"
+categories = ["api-bindings", "external-ffi-bindings", "computer-vision"]
 
 [dependencies]
 npp-sys = { path = "../npp-sys" }
