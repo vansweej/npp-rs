@@ -6,11 +6,12 @@ license = "MIT"
 edition = "2018"
 readme = "README.md"
 description = "Rust library providing bindings for Nvidia's NPP library"
-repository = "git@github.com:vansweej/npp-rs.git"
-categories = ["api-bindings", "external-ffi-bindings", "computer-vision"]
+repository = "https://github.com/vansweej/npp-rs.git"
+categories = ["api-bindings", "computer-vision"]
 
 [dependencies]
-npp-sys = { path = "../npp-sys" }
+# npp-sys = { path = "../npp-sys" }
+npp-sys = "0.0.1"
 image = "0.23.13"
 rustacuda = "0.1"
 rustacuda_core = "0.1"
