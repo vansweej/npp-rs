@@ -1,5 +1,6 @@
 # npp-rs
 ![main workflow](https://github.com/vansweej/npp-rs/actions/workflows/build.yml/badge.svg)
+[![Crates.io](https://img.shields.io/crates/v/npp-rs)](https://crates.io/crates/npp-rs)
 
 This repository provides rust bindings to the Nvidia NPP libraries. 
 Currently a subset of image processing is developed to be used in Neural Network processing. This crate is developed for CUDA 10.2 but 11.x support will be added later.
