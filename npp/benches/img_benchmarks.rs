@@ -14,6 +14,10 @@ criterion_group!(
     resize_rust_image_crate_benchmark,
     cuda_resize_benchmark_with_nppi_malloc,
     cuda_resize_benchmark_with_cuda_malloc,
-    cuda_resize_image_with_imageops
+    cuda_nearest_neighbor_resize_image_with_imageops,
+    cuda_linear_resize_image_with_imageops,
+    cuda_cubic_resize_image_with_imageops,
+    cuda_super_resize_image_with_imageops,
+    cuda_lanczos_resize_image_with_imageops,
 );
 criterion_main!(benches);
