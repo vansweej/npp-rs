@@ -1,5 +1,5 @@
 use crate::layout::*;
-use image::{ColorType, ImageBuffer, Rgb, RgbImage, RgbaImage};
+use image::{Bgra, ColorType, ImageBuffer, Rgb, RgbImage, RgbaImage};
 use rustacuda::error::*;
 use rustacuda::memory::*;
 use std::cell::RefCell;
@@ -123,6 +123,19 @@ impl TryFrom<&RgbaImage> for CudaImage<u8> {
     type Error = CudaError;
 
     fn try_from(img: &RgbaImage) -> Result<Self, Self::Error> {
+        let sl = img.sample_layout();
+        let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
+        Ok(CudaImage {
+            image_buf: Rc::new(RefCell::new(img_cuda_buffer)),
+            layout: CudaLayout::from(sl),
+        })
+    }
+}
+
+impl TryFrom<&ImageBuffer<Bgra<u8>, Vec<u8>>> for CudaImage<u8> {
+    type Error = CudaError;
+
+    fn try_from(img: &ImageBuffer<Bgra<u8>, Vec<u8>>) -> Result<Self, Self::Error> {
         let sl = img.sample_layout();
         let img_cuda_buffer = DeviceBuffer::from_slice(img.as_flat_samples().as_slice())?;
         Ok(CudaImage {

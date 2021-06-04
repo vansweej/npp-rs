@@ -9,3 +9,4 @@ pub mod image;
 pub mod imageops;
 pub mod layout;
 pub mod resize_ops;
+pub mod swap_channel_ops;
