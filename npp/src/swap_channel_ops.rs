@@ -8,6 +8,9 @@ impl SwapChannels<u8> for CudaImage<u8> {
     fn bgra_to_rgb(src: &CudaImage<u8>, dst: &mut CudaImage<u8>) -> Result<(), CudaError> {
         debug_assert!(src.layout.channel_stride == 1 && dst.layout.channel_stride == 1);
         debug_assert!(src.layout.width_stride == 4 && dst.layout.width_stride == 3);
+        debug_assert!(
+            src.layout.width == dst.layout.width && src.layout.height == dst.layout.height
+        );
 
         let nppi_size: NppiSize = NppiSize {
             width: dst.width() as i32,
