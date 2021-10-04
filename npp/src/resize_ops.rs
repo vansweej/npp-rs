@@ -19,7 +19,7 @@ pub enum ResizeInterpolation {
 }
 
 #[inline(always)]
-fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
+pub fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
     match inter {
         ResizeInterpolation::NearestNeighbor => NppiInterpolationMode_NPPI_INTER_NN as i32,
         ResizeInterpolation::Linear => NppiInterpolationMode_NPPI_INTER_LINEAR as i32,
@@ -30,7 +30,7 @@ fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
 }
 
 impl CudaImage<u8> {
-    fn resize(
+    pub fn resize(
         src: &CudaImage<u8>,
         dst: &mut CudaImage<u8>,
         inter: ResizeInterpolation,
