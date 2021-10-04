@@ -8,6 +8,16 @@ use npp_sys::{
 };
 use rustacuda::error::*;
 
+/// Interpolation methods supported in resize calls
+/// 16f channel types do not support Lanczos
+pub enum ResizeInterpolation {
+    NearestNeighbor,
+    Linear,
+    Cubic,
+    Super,
+    Lanczos,
+}
+
 #[inline(always)]
 fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
     match inter {
@@ -19,7 +29,7 @@ fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
     }
 }
 
-impl ResizeImage<u8> for CudaImage<u8> {
+impl CudaImage<u8> {
     fn resize(
         src: &CudaImage<u8>,
         dst: &mut CudaImage<u8>,
