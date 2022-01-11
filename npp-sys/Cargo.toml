@@ -2,7 +2,7 @@
 name = "npp-sys"
 version = "0.0.1"
 authors = ["Jan Van Sweevelt <vansweej@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 build = "build.rs"
 readme = "README.md"

@@ -1,4 +1,5 @@
 /target
+/npp/target
 Cargo.lock
 npp-sys/src/bindings.rs
 *.deb

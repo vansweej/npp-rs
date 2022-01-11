@@ -19,7 +19,7 @@ pub enum ResizeInterpolation {
 }
 
 #[inline(always)]
-pub fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
+fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
     match inter {
         ResizeInterpolation::NearestNeighbor => NppiInterpolationMode_NPPI_INTER_NN as i32,
         ResizeInterpolation::Linear => NppiInterpolationMode_NPPI_INTER_LINEAR as i32,
