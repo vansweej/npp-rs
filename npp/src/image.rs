@@ -15,6 +15,14 @@ pub struct CudaImage<T> {
     pub(in crate) layout: CudaLayout,
 }
 
+pub trait CopyFromImage {
+    fn copy_from_image(image: RgbImage) -> Result<(), CudaError>;
+}
+
+pub trait CopyToImage {
+    fn copy_to_image(image: RgbImage) -> Result<(), CudaError>;
+}
+
 pub trait Persistable {
     fn save(&self, filename: &str) -> Result<(), image::ImageError>;
 }
