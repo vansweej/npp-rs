@@ -64,6 +64,7 @@
             # CUDA toolkit components (all pinned via flake.lock)
             cudaPackages.cuda_cudart  # CUDA runtime headers + stub libs
             cudaPackages.libnpp       # NPP shared libs + headers
+            cudaPackages.cuda_nvrtc   # NVRTC runtime lib (needed by cudarc at link time)
 
             # libclang for bindgen
             llvmPackages.libclang
@@ -111,7 +112,7 @@
 
             # Embed .nvidia-libs as rpath so compiled binaries resolve the
             # real NVIDIA driver libs at runtime.
-            export RUSTFLAGS="-C link-arg=-Wl,-rpath,$PWD/.nvidia-libs -C link-arg=-Wl,-rpath,${pkgs.glibc}/lib $RUSTFLAGS"
+            export RUSTFLAGS="-C link-arg=-Wl,-rpath,$PWD/.nvidia-libs -C link-arg=-Wl,-rpath,${pkgs.glibc}/lib -L /usr/lib/x86_64-linux-gnu -L ${cudaPackages.cuda_nvrtc}/lib $RUSTFLAGS"
           '';
         };
       }

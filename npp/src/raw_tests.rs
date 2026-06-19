@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    //    use super::*;
-    use core::ffi::c_void;
+    use std::ffi::c_void;
     use npp_sys::{
         nppiFree, nppiMalloc_8u_C1, nppiMalloc_8u_C2, nppiMalloc_8u_C3, nppiMalloc_8u_C4,
     };

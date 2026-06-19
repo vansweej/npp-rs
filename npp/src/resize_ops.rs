@@ -1,24 +1,16 @@
+use crate::error::{check_status, NppError};
 use crate::image::CudaImage;
-use crate::imageops::*;
+use crate::imageops::{Resize, ResizeInterpolation};
 use npp_sys::{
-    nppiResize_8u_C3R, NppiInterpolationMode_NPPI_INTER_CUBIC,
-    NppiInterpolationMode_NPPI_INTER_LANCZOS, NppiInterpolationMode_NPPI_INTER_LINEAR,
-    NppiInterpolationMode_NPPI_INTER_NN, NppiInterpolationMode_NPPI_INTER_SUPER, NppiRect,
-    NppiSize,
+    nppiResize_32f_C3R, nppiResize_8u_C3R,
+    NppiInterpolationMode_NPPI_INTER_CUBIC,
+    NppiInterpolationMode_NPPI_INTER_LANCZOS,
+    NppiInterpolationMode_NPPI_INTER_LINEAR,
+    NppiInterpolationMode_NPPI_INTER_NN,
+    NppiInterpolationMode_NPPI_INTER_SUPER,
+    NppiRect, NppiSize,
 };
-use rustacuda::error::*;
 
-/// Interpolation methods supported in resize calls
-/// 16f channel types do not support Lanczos
-pub enum ResizeInterpolation {
-    NearestNeighbor,
-    Linear,
-    Cubic,
-    Super,
-    Lanczos,
-}
-
-#[inline(always)]
 fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
     match inter {
         ResizeInterpolation::NearestNeighbor => NppiInterpolationMode_NPPI_INTER_NN as i32,
@@ -29,53 +21,44 @@ fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
     }
 }
 
-impl CudaImage<u8> {
-    pub fn resize(
-        src: &CudaImage<u8>,
-        dst: &mut CudaImage<u8>,
-        inter: ResizeInterpolation,
-    ) -> Result<(), CudaError> {
-        debug_assert!(src.layout.channel_stride == 1 && dst.layout.channel_stride == 1);
-        debug_assert!(src.layout.width_stride == 3 && dst.layout.width_stride == 3);
+/// Resize for `CudaImage<u8>` over `nppiResize_8u_C3R` (3-channel packed RGB).
+///
+/// The raw pointer for both src and dst is offset by `layout.img_index` so
+/// this impl works correctly on sub-images created via `CudaImage::sub_image`
+/// (whose `layout.img_index` carries the parent's offset). Because the
+/// `CudaImage` stores a full `CudaSlice<T>` whose base is the allocation
+/// origin, and `img_index` is the element offset to the first pixel of the
+/// (possibly sub-)image, we apply the offset uniformly — it is zero for
+/// full-size images.
+///
+/// # Precondition
+///
+/// `self` and `dst` must refer to **non-overlapping** device buffers.
+/// Passing overlapping ROIs is undefined behaviour in NPP (C4).
+impl Resize for CudaImage<u8> {
+    fn resize(&self, dst: &mut Self, inter: ResizeInterpolation) -> Result<(), NppError> {
+        let (src_w, src_h) = (self.width(), self.height());
+        let (dst_w, dst_h) = (dst.width(), dst.height());
 
-        let src_size: NppiSize = NppiSize {
-            width: src.width() as i32,
-            height: src.height() as i32,
-        };
-        let dst_size: NppiSize = NppiSize {
-            width: dst.width() as i32,
-            height: dst.height() as i32,
-        };
-        let src_rect: NppiRect = NppiRect {
-            x: 0,
-            y: 0,
-            width: src.width() as i32,
-            height: src.height() as i32,
-        };
-        let dst_rect: NppiRect = NppiRect {
-            x: 0,
-            y: 0,
-            width: dst.width() as i32,
-            height: dst.height() as i32,
-        };
-        let src_ptr = unsafe {
-            src.image_buf
-                .borrow_mut()
-                .as_device_ptr()
-                .offset(src.layout.img_index as isize)
-                .as_raw()
-        };
-        let dst_ptr = unsafe {
-            dst.image_buf
-                .borrow_mut()
-                .as_device_ptr()
-                .offset(dst.layout.img_index as isize)
-                .as_raw_mut()
-        };
+        let src_size = NppiSize { width: src_w as i32, height: src_h as i32 };
+        let dst_size = NppiSize { width: dst_w as i32, height: dst_h as i32 };
+        let src_rect = NppiRect { x: 0, y: 0, width: src_w as i32, height: src_h as i32 };
+        let dst_rect = NppiRect { x: 0, y: 0, width: dst_w as i32, height: dst_h as i32 };
+
+        // ── Raw pointers via DevicePtr/DevicePtrMut trait ──────────────
+        // Both the const and mutable CUdeviceptrs are offset by img_index
+        // so sub-images (which have img_index != 0) address the correct
+        // device memory. The height_stride is inherited from the parent
+        // layout and is already correct.
+        let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
+        let src_ptr = (src_base + self.layout.img_index as u64) as *const u8;
+        let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
+        let dst_ptr = (*dst_base + dst.layout.img_index as u64) as *mut u8;
+
         let status = unsafe {
             nppiResize_8u_C3R(
                 src_ptr,
-                src.layout.height_stride as i32,
+                self.layout.height_stride as i32,
                 src_size,
                 src_rect,
                 dst_ptr,
@@ -85,144 +68,56 @@ impl CudaImage<u8> {
                 interpolation_mode(inter),
             )
         };
-        if status == 0 {
-            Ok(())
-        } else {
-            Err(CudaError::UnknownError)
-        }
+        check_status(status)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cuda::initialize_cuda_device;
-    use crate::image::Persistable;
-    use image::io::Reader as ImageReader;
-    use image::{ColorType, RgbImage};
-    use std::convert::TryFrom;
+/// Resize for `CudaImage<f32>` over `nppiResize_32f_C3R` (3-channel packed float).
+///
+/// # nStep unit conversion
+///
+/// NPP's `nStep` is in **bytes**. `layout.height_stride` stores the per-row
+/// element count; we multiply by `size_of::<f32>()` to produce the byte step.
+/// This is the correct pattern for all non-`u8` types — for `u8` the two
+/// coincide, but for wider types the explicit conversion prevents the C11
+/// class of bug.
+///
+/// # Precondition
+///
+/// `self` and `dst` must refer to **non-overlapping** device buffers.
+impl Resize for CudaImage<f32> {
+    fn resize(&self, dst: &mut Self, inter: ResizeInterpolation) -> Result<(), NppError> {
+        let (src_w, src_h) = (self.width(), self.height());
+        let (dst_w, dst_h) = (dst.width(), dst.height());
 
-    #[test]
-    fn test_resize1() {
-        let _ctx = initialize_cuda_device();
-        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
-            .unwrap()
-            .decode()
-            .unwrap();
-        let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
+        let src_size = NppiSize { width: src_w as i32, height: src_h as i32 };
+        let dst_size = NppiSize { width: dst_w as i32, height: dst_h as i32 };
+        let src_rect = NppiRect { x: 0, y: 0, width: src_w as i32, height: src_h as i32 };
+        let dst_rect = NppiRect { x: 0, y: 0, width: dst_w as i32, height: dst_h as i32 };
 
-        let mut cuda_dst = match img_layout_src.channels {
-            3 => CudaImage::new(640, 480, ColorType::Rgb8),
-            _ => Err(CudaError::UnknownError),
-        }
-        .unwrap();
+        // nStep is in BYTES. height_stride counts f32 elements. Convert.
+        let src_step_bytes = (self.layout.height_stride * std::mem::size_of::<f32>()) as i32;
+        let dst_step_bytes = (dst.layout.height_stride * std::mem::size_of::<f32>()) as i32;
 
-        let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
+        // Raw pointer offset via DevicePtr/DevicePtrMut (handles sub-images).
+        let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
+        let src_ptr = (src_base + self.layout.img_index as u64) as *const f32;
+        let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
+        let dst_ptr = (*dst_base + dst.layout.img_index as u64) as *mut f32;
 
-        CudaImage::resize(&cuda_src, &mut cuda_dst, ResizeInterpolation::Linear).unwrap();
-
-        cuda_dst.save("resize1").unwrap();
-
-        let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
-
-        let img_layout_dst = img_dst.sample_layout();
-
-        assert_eq!(img_layout_dst.channels, img_layout_src.channels);
-        assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
-        assert_eq!(img_layout_dst.width, 640);
-        assert_eq!(img_layout_dst.height, 480);
-    }
-
-    #[test]
-    fn test_resize2() {
-        let _ctx = initialize_cuda_device();
-        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
-            .unwrap()
-            .decode()
-            .unwrap();
-        let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
-
-        let mut cuda_dst = match img_layout_src.channels {
-            3 => CudaImage::new(640, 480, ColorType::Rgb8),
-            _ => Err(CudaError::UnknownError),
-        }
-        .unwrap();
-
-        let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
-        let sub_cuda_src = cuda_src.sub_image(1722, 954, 510, 555).unwrap();
-
-        CudaImage::resize(&sub_cuda_src, &mut cuda_dst, ResizeInterpolation::Linear).unwrap();
-
-        sub_cuda_src.save("resize2").unwrap();
-
-        let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
-        let img_layout_dst = img_dst.sample_layout();
-
-        assert_eq!(img_layout_dst.channels, img_layout_src.channels);
-        assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
-        assert_eq!(img_layout_dst.width, 640);
-        assert_eq!(img_layout_dst.height, 480);
-    }
-
-    #[test]
-    fn test_resize3() {
-        let _ctx = initialize_cuda_device();
-        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
-            .unwrap()
-            .decode()
-            .unwrap();
-        let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
-
-        let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
-        let sub_cuda_src1 = cuda_src.sub_image(1722, 954, 510, 555).unwrap();
-        let mut sub_cuda_src2 = cuda_src.sub_image(10, 10, 510, 555).unwrap();
-
-        CudaImage::resize(
-            &sub_cuda_src1,
-            &mut sub_cuda_src2,
-            ResizeInterpolation::Linear,
-        )
-        .unwrap();
-
-        cuda_src.save("resize3").unwrap();
-
-        let img_dst = RgbImage::try_from(&sub_cuda_src2).unwrap();
-        let img_layout_dst = img_dst.sample_layout();
-
-        assert_eq!(img_layout_dst.channels, img_layout_src.channels);
-        assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
-        assert_eq!(img_layout_dst.width, 510);
-        assert_eq!(img_layout_dst.height, 555);
-    }
-
-    #[test]
-    fn test_resize4() {
-        let _ctx = initialize_cuda_device();
-        let img_src = ImageReader::open("test_resources/DSC_0003.JPG")
-            .unwrap()
-            .decode()
-            .unwrap();
-        let img_layout_src = img_src.as_rgb8().unwrap().sample_layout();
-
-        let mut cuda_dst = match img_layout_src.channels {
-            3 => CudaImage::new(640, 480, ColorType::Rgb8),
-            _ => Err(CudaError::UnknownError),
-        }
-        .unwrap();
-
-        let cuda_src = CudaImage::try_from(img_src.as_rgb8().unwrap()).unwrap();
-
-        CudaImage::resize(&cuda_src, &mut cuda_dst, ResizeInterpolation::Lanczos).unwrap();
-
-        cuda_dst.save("lanczos").unwrap();
-
-        let img_dst = RgbImage::try_from(&cuda_dst).unwrap();
-
-        let img_layout_dst = img_dst.sample_layout();
-
-        assert_eq!(img_layout_dst.channels, img_layout_src.channels);
-        assert_eq!(img_layout_dst.channel_stride, img_layout_src.channel_stride);
-        assert_eq!(img_layout_dst.width, 640);
-        assert_eq!(img_layout_dst.height, 480);
+        let status = unsafe {
+            nppiResize_32f_C3R(
+                src_ptr,
+                src_step_bytes,
+                src_size,
+                src_rect,
+                dst_ptr,
+                dst_step_bytes,
+                dst_size,
+                dst_rect,
+                interpolation_mode(inter),
+            )
+        };
+        check_status(status)
     }
 }

@@ -1,7 +1,5 @@
-use image::flat::SampleLayout;
-use std::convert::From;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// Describes the memory layout of a packed NPP-compatible image buffer.
 pub struct CudaLayout {
     /// The number of channels in the color representation of the image.
     pub channels: u8,
@@ -49,19 +47,10 @@ impl CudaLayout {
             img_index: 0,
         }
     }
-}
 
-impl From<SampleLayout> for CudaLayout {
-    fn from(layout: SampleLayout) -> Self {
-        CudaLayout {
-            channels: layout.channels,
-            channel_stride: layout.channel_stride,
-            width: layout.width,
-            width_stride: layout.width_stride,
-            height: layout.height,
-            height_stride: layout.height_stride,
-            img_index: 0,
-        }
+    /// Get the image dimensions as (channels, width, height).
+    pub fn dimensions(&self) -> (u8, u32, u32) {
+        (self.channels, self.width, self.height)
     }
 }
 
@@ -79,18 +68,5 @@ mod tests {
         assert_eq!(layout.height, 480);
         assert_eq!(layout.height_stride, 1920);
         assert_eq!(layout.img_index, 0);
-    }
-
-    #[test]
-    fn test_from_sample_layout() {
-        let layout = SampleLayout::row_major_packed(3, 640, 480);
-        let cuda_layout = CudaLayout::from(layout);
-        assert_eq!(cuda_layout.channels, 3);
-        assert_eq!(cuda_layout.channel_stride, 1);
-        assert_eq!(cuda_layout.width, 640);
-        assert_eq!(cuda_layout.width_stride, 3);
-        assert_eq!(cuda_layout.height, 480);
-        assert_eq!(cuda_layout.height_stride, 1920);
-        assert_eq!(cuda_layout.img_index, 0);
     }
 }

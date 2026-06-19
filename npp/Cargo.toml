@@ -8,20 +8,19 @@ readme = "README.md"
 description = "Rust library providing bindings for Nvidia's NPP library"
 repository = "https://github.com/vansweej/npp-rs.git"
 categories = ["api-bindings", "computer-vision"]
+autobenches = false
 
 [dependencies]
 npp-sys = { path = "../npp-sys" }
 # npp-sys = "0.0.1"  # release fallback
-image = "0.23.13"
-rustacuda = "0.1"
-rustacuda_core = "0.1"
-rustacuda_derive = "0.1"
+cudarc = { version = "0.9", default-features = false, features = ["driver", "std"] }
+thiserror = "2"
+# half = "2"  # TODO(M2): uncomment for half::f16 NppPixelType support
 
 [dev-dependencies]
 pretty_assertions = "1.0.0"
-criterion = "0.3.4"
-cuda-runtime-sys = "0.3.0-alpha.1"
 
-[[bench]]
-name = "img_benchmarks"
-harness = false
+[features]
+default = []
+# Enable to run GPU-dependent tests (manual gate — no GPU lane in CI).
+gpu = []
