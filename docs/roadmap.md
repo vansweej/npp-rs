@@ -5,6 +5,40 @@
 > Prioritization and sequencing will be decided per session; this doc is
 > a descriptive catalog, not a commitment schedule.
 
+Milestone 1 is **complete and merged** — cudarc 0.9 port, Nix dev shell, shared NPP linking,
+bindgen `nppi*` FFI, and GPU-gated tests. This roadmap is now the single forward source of
+truth for all post-M1 work.
+
+---
+
+## Resolved decisions (binding — do not re-litigate)
+
+These decisions are inherited by F1/F2 (notably `nppi*`-only / `npps*`-deferred),
+so they must live in the roadmap before the M1 plan document is deleted.
+
+| Decision | Resolution |
+|----------|-----------|
+| CUDA major | Latest in nixpkgs — `nixos-unstable`, `pkgs.cudaPackages` |
+| CUDA crate | `cudarc 0.9`, `default-features = false`, features `["driver","std"]` — replaces `rustacuda*` |
+| GPU tests | Manual only — feature-gated behind `gpu`; plain `cargo test` skips them |
+| NPP linking | Shared (dynamic) — no `static=` names |
+| Platform | Linux only — no Windows paths |
+| NPP nixpkgs attr | `cudaPackages.libnpp` |
+| Binding philosophy | Safe, idiomatic Rust; rewrite rather than faithfully port; current files are behavioural reference |
+| Domain scope | NPP image ops (`nppi*`) only; signal ops (`npps*`) deferred to F9 |
+
+## Out of scope for M1 (deferred)
+
+- C2 — replace `debug_assert!` with `Result`-returning validation and seal the format
+- C5 — replace `Vec::with_capacity` + `set_len` with zeroed/`MaybeUninit` + stride fix
+- C8 — stream/execution-context model (CUDA streams, async ops)
+- C11 — (if deferred by the open decision) seal/remove generic `T`
+- C12 — golden-image correctness tests
+- IPP bindings (`ipp-sys`/`ipp`)
+- NPP signal ops (`npps*`)
+- `image` crate upgrade from `0.23.13` to modern
+- Broadening NPP coverage or adding pixel formats
+
 ---
 
 ## F1 — Macro-generated binding codegen *(recommended first after M1)*
@@ -239,4 +273,4 @@ regenerated when streams land. Everything else is comfortably independent.
 |-------|--------|--------|
 | C1–C12 | Architecture review finding (`reviews/final-report.md`) | Various — C1, C2, C5, C12, C7, C8 referenced above |
 | CT1–CT6 | Contested finding (same report) | CT5 stride concerns and CT1 `set_len` referenced |
-| M1 | Milestone 1 ("build again") | In progress; this roadmap catalogs everything after it |
+| M1 | Milestone 1 ("build again") | Complete; this roadmap catalogs everything after it |
