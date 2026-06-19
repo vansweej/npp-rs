@@ -1,0 +1,3 @@
+# Pinned -- update deliberately with nix flake update + cargo test
+[toolchain]
+channel = "1.94.1"

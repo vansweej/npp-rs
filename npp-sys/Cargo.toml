@@ -5,14 +5,11 @@ authors = ["Jan Van Sweevelt <vansweej@gmail.com>"]
 edition = "2021"
 license = "MIT"
 build = "build.rs"
-readme = "README.md"
 description = "Rust library providing bindings for Nvidia's NPP library"
 repository = "https://github.com/vansweej/npp-rs.git"
 categories = ["external-ffi-bindings", "computer-vision"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.58.1"
+bindgen = "0.69"

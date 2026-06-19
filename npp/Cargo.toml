@@ -10,8 +10,8 @@ repository = "https://github.com/vansweej/npp-rs.git"
 categories = ["api-bindings", "computer-vision"]
 
 [dependencies]
-# npp-sys = { path = "../npp-sys" }
-npp-sys = "0.0.1"
+npp-sys = { path = "../npp-sys" }
+# npp-sys = "0.0.1"  # release fallback
 image = "0.23.13"
 rustacuda = "0.1"
 rustacuda_core = "0.1"

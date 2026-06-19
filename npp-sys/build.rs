@@ -1,103 +1,70 @@
-extern crate bindgen;
 use std::env;
 use std::path::PathBuf;
 
-#[cfg(target_os = "linux")]
+/// Read CUDA installation path: first try `CUDA_PATH` (set by Nix shellHook),
+/// fall back to `CUDA_INSTALL_DIR` (for non-Nix local builds), then
+/// `/usr/local/cuda` as a last resort.
 fn cuda_path() -> String {
-    String::from(option_env!("CUDA_INSTALL_DIR").unwrap_or("/usr/local/cuda"))
+    std::env::var("CUDA_PATH")
+        .or_else(|_| option_env!("CUDA_INSTALL_DIR").map(|s| s.to_string()).ok_or(()))
+        .unwrap_or_else(|_| "/usr/local/cuda".to_string())
 }
 
-#[cfg(target_os = "linux")]
 fn cuda_include_path() -> String {
     format!("{}/include", cuda_path())
 }
 
-#[cfg(target_os = "linux")]
 fn cuda_configuration() {
-    println!("cargo:rustc-link-search={}/lib", cuda_path());
-    println!("cargo:rustc-link-search={}/lib64", cuda_path());
+    println!("cargo:rustc-link-search=native={}/lib", cuda_path());
+    println!("cargo:rustc-link-search=native={}/lib64", cuda_path());
+    // NPP libraries are in a separate store path from cuda_cudart
+    if let Ok(npp_lib) = std::env::var("NPP_LIB_PATH") {
+        println!("cargo:rustc-link-search=native={}", npp_lib);
+    }
 }
 
-#[cfg(target_os = "windows")]
-fn cuda_include_path() -> String {
-    let cudadir = match option_env!("CUDA_PATH") {
-        Some(cuda_dir) => format!("{}/include", cuda_dir),
-        None => "/usr/local/cuda/include".to_string(),
-    };
-
-    cudadir
-}
-
-#[cfg(target_os = "windows")]
-fn cuda_configuration() {
-    let cudadir = match option_env!("CUDA_PATH") {
-        Some(cuda_dir) => cuda_dir,
-        None => "/usr/local/cuda",
-    };
-
-    println!("cargo:rustc-link-search={}/lib/x64", cudadir);
-}
-
-#[cfg(target_os = "linux")]
 fn cuda_link_libs() {
-    println!("cargo:rustc-link-lib=static=cudart_static");
-    println!("cargo:rustc-link-lib=static=nppc_static");
-    println!("cargo:rustc-link-lib=static=nppial_static");
-    println!("cargo:rustc-link-lib=static=nppicc_static");
-    println!("cargo:rustc-link-lib=static=nppidei_static");
-    println!("cargo:rustc-link-lib=static=nppif_static");
-    println!("cargo:rustc-link-lib=static=nppig_static");
-    println!("cargo:rustc-link-lib=static=nppim_static");
-    println!("cargo:rustc-link-lib=static=nppist_static");
-    println!("cargo:rustc-link-lib=static=nppisu_static");
-    println!("cargo:rustc-link-lib=static=nppitc_static");
-}
-
-#[cfg(target_os = "windows")]
-fn cuda_link_libs() {
-    println!("cargo:rustc-link-lib=cudart");
-    println!("cargo:rustc-link-lib=nppc");
-    println!("cargo:rustc-link-lib=nppial");
-    println!("cargo:rustc-link-lib=nppicc");
-    println!("cargo:rustc-link-lib=nppidei");
-    println!("cargo:rustc-link-lib=nppif");
-    println!("cargo:rustc-link-lib=nppig");
-    println!("cargo:rustc-link-lib=nppim");
-    println!("cargo:rustc-link-lib=nppist");
-    println!("cargo:rustc-link-lib=nppisu");
-    println!("cargo:rustc-link-lib=nppitc");
+    // Dynamic NPP libraries (.so)
+    println!("cargo:rustc-link-lib=dylib=nppc");
+    println!("cargo:rustc-link-lib=dylib=nppial");
+    println!("cargo:rustc-link-lib=dylib=nppicc");
+    println!("cargo:rustc-link-lib=dylib=nppidei");
+    println!("cargo:rustc-link-lib=dylib=nppif");
+    println!("cargo:rustc-link-lib=dylib=nppig");
+    println!("cargo:rustc-link-lib=dylib=nppim");
+    println!("cargo:rustc-link-lib=dylib=nppist");
+    println!("cargo:rustc-link-lib=dylib=nppisu");
+    println!("cargo:rustc-link-lib=dylib=nppitc");
+    // CUDA runtime (dynamic)
+    println!("cargo:rustc-link-lib=dylib=cudart");
 }
 
 fn main() {
-    // Tell cargo to tell rustc to link the cuda libraries
     cuda_configuration();
     cuda_link_libs();
-    #[cfg(target_os = "linux")]
-    println!("cargo:rustc-link-lib=culibos");
-
-    #[cfg(target_os = "linux")]
-    println!("cargo:rustc-link-lib=dylib=stdc++");
 
     // Tell cargo to invalidate the built crate whenever the wrapper changes
     println!("cargo:rerun-if-changed=wrapper.h");
+    println!("cargo:rerun-if-env-changed=CUDA_PATH");
+    println!("cargo:rerun-if-env-changed=NPP_LIB_PATH");
+    println!("cargo:rerun-if-env-changed=BINDGEN_EXTRA_CLANG_ARGS");
 
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
+    // Build clang args from the CUDA include path and BINDGEN_EXTRA_CLANG_ARGS
+    let mut clang_args: Vec<String> = vec!["-I".to_string(), cuda_include_path()];
+    if let Ok(extra) = std::env::var("BINDGEN_EXTRA_CLANG_ARGS") {
+        // Split on whitespace, handling quoted -I arguments
+        clang_args.extend(extra.split_whitespace().map(|s| s.to_string()));
+    }
+
     let bindings = bindgen::Builder::default()
-        // The input header we would like to generate
-        // bindings for.
         .header("wrapper.h")
-        // CUDA include files
-        .clang_args(&["-I", &cuda_include_path()[..]])
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        // do not generate doc comments
+        .clang_args(&clang_args)
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate_comments(false)
-        // Finish the builder and generate the bindings.
+        .allowlist_function("nppi.*")
+        .allowlist_type("Nppi.*")
+        .allowlist_var("Nppi.*")
         .generate()
-        // Unwrap the Result and panic on failure.
         .expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());

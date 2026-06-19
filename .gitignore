@@ -4,4 +4,9 @@ Cargo.lock
 npp-sys/src/bindings.rs
 *.deb
 /.vscode
+.nvidia-libs/
+result
+result-*
+# Generated bindings are in OUT_DIR (never committed)
+# Cargo.lock is gitignored per project convention (see AGENTS.md)
 
