@@ -8,12 +8,32 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  CUDA_INSTALL_DIR: /usr/local/cuda-10.2
 
 jobs:
-  setup:
-    runs-on: ubuntu-18.04
+  fmt:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - run: ./ci/install_server.sh
-      - run: cargo build  
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+      - run: nix develop . --command cargo fmt --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+      - run: nix develop . --command cargo clippy -- -D warnings
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+      - run: nix develop . --command cargo build
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+      - run: nix develop . --command cargo test --no-default-features

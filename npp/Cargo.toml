@@ -1,6 +1,6 @@
 [package]
 name = "npp-rs"
-version = "0.0.1"
+version = "0.1.0-dev"
 authors = ["Jan Van Sweevelt <vansweej@gmail.com>"]
 license = "MIT"
 edition = "2021"

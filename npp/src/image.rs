@@ -191,13 +191,13 @@ impl<T: NppPixelType> CudaImage<T> {
 
     /// Compute the linear index for a pixel at (x, y).
     pub fn get_index(&self, x: u32, y: u32) -> usize {
-        (y as usize) * (self.layout.height_stride as usize)
-            + (x as usize) * (self.layout.width_stride as usize)
+        (y as usize) * self.layout.height_stride
+            + (x as usize) * self.layout.width_stride
     }
 
     /// Get the (x, y) coordinates of the first pixel in the image.
     pub fn get_start_point(&self) -> (u32, u32) {
-        let img_index = self.layout.img_index as usize;
+        let img_index = self.layout.img_index;
         let x = (img_index / (self.layout.channels as usize)) as u32;
         let y = 0;
         (x, y)
@@ -240,8 +240,8 @@ impl<T: NppPixelType> CudaImage<T> {
         }
 
         let img_index = self.get_index(x, y);
-        let start = self.layout.img_index as usize + img_index;
-        let len = (h as usize) * (self.layout.height_stride as usize);
+        let start = self.layout.img_index + img_index;
+        let len = (h as usize) * self.layout.height_stride;
 
         let view = self.buf.slice(start..start + len);
         let layout = CudaLayout {
@@ -288,8 +288,8 @@ impl<T: NppPixelType> CudaImage<T> {
         }
 
         let img_index = self.get_index(x, y);
-        let start = self.layout.img_index as usize + img_index;
-        let len = (h as usize) * (self.layout.height_stride as usize);
+        let start = self.layout.img_index + img_index;
+        let len = (h as usize) * self.layout.height_stride;
 
         let view = self.buf.slice_mut(start..start + len);
         let layout = CudaLayout {
@@ -311,6 +311,10 @@ impl<T: NppPixelType> CudaImage<T> {
 }
 
 /// A borrowed read-only view of a GPU image.
+///
+/// Fields and methods on this type are used by M2 sub-image operations;
+/// unused in M1 but retained for API stability.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct CudaImageView<'a, T: NppPixelType> {
     pub(crate) device: Arc<CudaDevice>,
@@ -341,7 +345,7 @@ impl<'a, T: NppPixelType> CudaImageView<'a, T> {
 
     /// Get the (x, y) coordinates of the first pixel in the view.
     pub fn get_start_point(&self) -> (u32, u32) {
-        let img_index = self.layout.img_index as usize;
+        let img_index = self.layout.img_index;
         let x = (img_index / (self.layout.channels as usize)) as u32;
         let y = 0;
         (x, y)
@@ -350,6 +354,7 @@ impl<'a, T: NppPixelType> CudaImageView<'a, T> {
     /// Extract the raw device pointer for NPP calls.
     ///
     /// See `docs/spike-cudarc-ptr-bridge.md` for the authoritative pattern.
+    #[allow(dead_code)]
     pub(crate) fn device_ptr(&self) -> *const T {
         let cu_ptr = cudarc::driver::DevicePtr::device_ptr(&self.view);
         *cu_ptr as *const T
@@ -357,6 +362,10 @@ impl<'a, T: NppPixelType> CudaImageView<'a, T> {
 }
 
 /// A borrowed mutable view of a GPU image.
+///
+/// Fields and methods on this type are used by M2 sub-image operations;
+/// unused in M1 but retained for API stability.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct CudaImageViewMut<'a, T: NppPixelType> {
     pub(crate) device: Arc<CudaDevice>,
@@ -387,7 +396,7 @@ impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
 
     /// Get the (x, y) coordinates of the first pixel in the view.
     pub fn get_start_point(&self) -> (u32, u32) {
-        let img_index = self.layout.img_index as usize;
+        let img_index = self.layout.img_index;
         let x = (img_index / (self.layout.channels as usize)) as u32;
         let y = 0;
         (x, y)
@@ -396,6 +405,7 @@ impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
     /// Extract the raw mutable device pointer for NPP calls.
     ///
     /// See `docs/spike-cudarc-ptr-bridge.md` for the authoritative pattern.
+    #[allow(dead_code)]
     pub(crate) fn device_ptr_mut(&mut self) -> *mut T {
         let cu_ptr = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut self.view);
         *cu_ptr as *mut T
