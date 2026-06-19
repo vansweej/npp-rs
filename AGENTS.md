@@ -5,21 +5,20 @@ Linux + NVIDIA GPU only.
 
 ## Current state vs. target (READ FIRST)
 
-This repo is mid-migration. The checked-in code is the **old, broken** state
-(CUDA 10.2, `rustacuda`, static linking, no Nix, `ubuntu-18.04` CI). The intended
-new state is specified in `reviews/M1-build-again-plan.md` (Milestone 1). If you
-are doing build/port work, implement toward that plan — do not "fix" the repo
-back to its current shape.
+Milestone 1 is **complete** — the repo has been ported to cudarc 0.9, ships a
+reproducible Nix dev shell, uses shared NPP linking, has bindgen `nppi*` FFI,
+and GPU-gated tests. The forward source of truth for all post-M1 work is
+`docs/roadmap.md` (features F1–F10). Its "Resolved decisions (binding)" and
+"Out of scope (M2)" sections replace the former M1 plan document as the
+authority for scope decisions.
 
-- `reviews/M1-build-again-plan.md` — the authoritative phased plan (5 phases,
-  one commit each). Implement steps in order within a phase.
-- `reviews/final-report.md` — **mandatory full read before any M1 phase work.**
+- `reviews/final-report.md` — **mandatory full read before any soundness work.**
   The plan cites findings by ID (C1, C2, CT1, …); the evidence and the Round-2
   retractions (e.g. CT2 leak claim and CT6 bounds bug were *withdrawn*) live only
   in the report. Acting on plan summaries alone will reintroduce phantom fixes.
-- The plan's "Resolved decisions" table and "OUT OF SCOPE (M2)" list are binding:
-  do not re-litigate them, and do not pull M2 work (C2 validation, C5 `set_len`,
-  C8 streams, `image` upgrade, signal ops) into M1.
+- `docs/roadmap.md` — the single forward source of truth (F1–F10), including
+  the "Resolved decisions (binding)" and "Out of scope (M2)" sections that
+  govern all M2 work.
 
 ## Workspace layout
 
@@ -27,13 +26,11 @@ back to its current shape.
 - `npp-sys/` — bindgen FFI to NPP. Crate name `npp-sys`.
 - `npp/` — safe wrapper. **Crate name is `npp-rs`, not `npp`.** So the directory
   and the cargo package name differ: use `cargo ... -p npp-rs` for the `npp/` dir.
-- `ci/install_server.sh` — old dpkg CUDA bootstrap; M1 Phase 5 deletes it.
 - `reviews/` — architecture review + the M1 plan (not code).
 
-## Build / test (Nix-first, once `flake.nix` exists)
+## Build / test
 
-There is **no `flake.nix`, `rust-toolchain.toml`, or `Cargo.lock` yet** — M1
-Phase 1/2 create them. After they exist, run everything through the dev shell:
+Run everything through the Nix dev shell:
 
 ```bash
 nix develop . --command cargo build
@@ -58,11 +55,11 @@ assert only geometry/dimensions.
 
 ## FFI / linking gotchas (when touching `npp-sys/build.rs`)
 
-- Target Linux only; M1 deletes all `#[cfg(target_os = "windows")]` branches.
+- Target Linux only; Windows branches have been removed.
 - Read CUDA/NPP paths from `CUDA_PATH` (set by the Nix shellHook), keeping the
   `option_env!("CUDA_INSTALL_DIR")` fallback. Do not hardcode `/usr/local/cuda`.
-- Switch static → **shared** NPP linking (`rustc-link-lib=shared=nppc`, etc.);
-  drop `cudart_static`, `culibos`, `stdc++`.
+- **shared** NPP linking is already in place (`rustc-link-lib=shared=nppc`, etc.);
+  `cudart_static`, `culibos`, `stdc++` are not linked.
 - bindgen must use an **allowlist** scoped to the image domain (`nppi*` /
   `Nppi*`); signal ops (`npps*`) stay excluded (`wrapper.h` already comments out
   `npps.h`). Keep `.generate_comments(false)`.
