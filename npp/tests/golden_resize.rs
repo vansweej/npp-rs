@@ -15,12 +15,12 @@
 
 #![cfg(feature = "gpu")]
 
+use cudarc::driver::CudaDevice;
 use npp_rs::cuda::default_cuda_device;
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{Resize, ResizeInterpolation};
 use std::convert::TryFrom;
 use std::sync::Arc;
-use cudarc::driver::CudaDevice;
 
 const SRC_W: u32 = 12;
 const SRC_H: u32 = 8;
@@ -32,9 +32,9 @@ fn make_input() -> Vec<u8> {
     let mut data = Vec::with_capacity((SRC_W * SRC_H * 3) as usize);
     for y in 0..SRC_H {
         for x in 0..SRC_W {
-            data.push((x * 21) as u8);  // R: x-gradient
-            data.push((y * 32) as u8);  // G: y-gradient
-            data.push(128);             // B: constant
+            data.push((x * 21) as u8); // R: x-gradient
+            data.push((y * 32) as u8); // G: y-gradient
+            data.push(128); // B: constant
         }
     }
     data
@@ -43,25 +43,19 @@ fn make_input() -> Vec<u8> {
 /// Golden output for NearestNeighbor 12x8 → 6x4.
 /// Generated on NVIDIA GPU, NearestNeighbor interpolation (bit-exact).
 const EXPECTED: &[u8] = &[
-    0, 0, 128, 42, 0, 128, 84, 0, 128, 126, 0, 128, 168, 0, 128, 210, 0, 128,
-    0, 64, 128, 42, 64, 128, 84, 64, 128, 126, 64, 128, 168, 64, 128, 210, 64, 128,
-    0, 128, 128, 42, 128, 128, 84, 128, 128, 126, 128, 128, 168, 128, 128, 210, 128, 128,
-    0, 192, 128, 42, 192, 128, 84, 192, 128, 126, 192, 128, 168, 192, 128, 210, 192, 128,
+    0, 0, 128, 42, 0, 128, 84, 0, 128, 126, 0, 128, 168, 0, 128, 210, 0, 128, 0, 64, 128, 42, 64,
+    128, 84, 64, 128, 126, 64, 128, 168, 64, 128, 210, 64, 128, 0, 128, 128, 42, 128, 128, 84, 128,
+    128, 126, 128, 128, 168, 128, 128, 210, 128, 128, 0, 192, 128, 42, 192, 128, 84, 192, 128, 126,
+    192, 128, 168, 192, 128, 210, 192, 128,
 ];
 
 #[test]
 fn test_golden_resize_u8_nn() {
     let device: Arc<CudaDevice> = default_cuda_device().expect("CUDA device init");
-    let src = CudaImage::from_host(
-        device.clone(),
-        3, SRC_W, SRC_H,
-        &make_input(),
-    ).expect("src allocation");
+    let src = CudaImage::from_host(device.clone(), 3, SRC_W, SRC_H, &make_input())
+        .expect("src allocation");
 
-    let mut dst = CudaImage::<u8>::new(
-        device.clone(),
-        3, DST_W, DST_H,
-    ).expect("dst allocation");
+    let mut dst = CudaImage::<u8>::new(device.clone(), 3, DST_W, DST_H).expect("dst allocation");
 
     src.resize(&mut dst, ResizeInterpolation::NearestNeighbor)
         .expect("resize");

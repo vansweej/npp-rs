@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use std::ffi::c_void;
     use npp_sys::{
         nppiFree, nppiMalloc_8u_C1, nppiMalloc_8u_C2, nppiMalloc_8u_C3, nppiMalloc_8u_C4,
     };
+    use std::ffi::c_void;
 
     #[cfg_attr(not(feature = "gpu"), ignore)]
     #[test]

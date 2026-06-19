@@ -15,25 +15,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
-      - run: nix develop . --command cargo fmt --check
+      - run: nix develop . --impure --command cargo fmt --check
 
   clippy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
-      - run: nix develop . --command cargo clippy -- -D warnings
+      - run: nix develop . --impure --command cargo clippy -- -D warnings
 
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
-      - run: nix develop . --command cargo build
+      - run: nix develop . --impure --command cargo build
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
-      - run: nix develop . --command cargo test --no-default-features
+      - run: nix develop . --impure --command cargo test --no-default-features

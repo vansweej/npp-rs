@@ -6,7 +6,11 @@ use std::path::PathBuf;
 /// `/usr/local/cuda` as a last resort.
 fn cuda_path() -> String {
     std::env::var("CUDA_PATH")
-        .or_else(|_| option_env!("CUDA_INSTALL_DIR").map(|s| s.to_string()).ok_or(()))
+        .or_else(|_| {
+            option_env!("CUDA_INSTALL_DIR")
+                .map(|s| s.to_string())
+                .ok_or(())
+        })
         .unwrap_or_else(|_| "/usr/local/cuda".to_string())
 }
 

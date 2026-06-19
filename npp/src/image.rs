@@ -1,5 +1,5 @@
-use crate::layout::CudaLayout;
 use crate::error::NppError;
+use crate::layout::CudaLayout;
 use cudarc::driver::{CudaDevice, CudaSlice, CudaView, CudaViewMut};
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -26,7 +26,9 @@ use std::sync::Arc;
 /// capability is expressed by separate traits (e.g. `Resize`, `SwapChannels`);
 /// an unsupported `(type, op)` pair simply has no trait impl, making it a
 /// compile-time error rather than a runtime `NotImplemented`.
-pub trait NppPixelType: cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Copy + private::Sealed {
+pub trait NppPixelType:
+    cudarc::driver::DeviceRepr + cudarc::driver::ValidAsZeroBits + Copy + private::Sealed
+{
     /// Bit-width of the element type (e.g. 8 for `u8`, 32 for `f32`).
     const BITS: u8;
 }
@@ -191,8 +193,7 @@ impl<T: NppPixelType> CudaImage<T> {
 
     /// Compute the linear index for a pixel at (x, y).
     pub fn get_index(&self, x: u32, y: u32) -> usize {
-        (y as usize) * self.layout.height_stride
-            + (x as usize) * self.layout.width_stride
+        (y as usize) * self.layout.height_stride + (x as usize) * self.layout.width_stride
     }
 
     /// Get the (x, y) coordinates of the first pixel in the image.

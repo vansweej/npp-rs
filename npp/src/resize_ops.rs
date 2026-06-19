@@ -2,13 +2,10 @@ use crate::error::{check_status, NppError};
 use crate::image::CudaImage;
 use crate::imageops::{Resize, ResizeInterpolation};
 use npp_sys::{
-    nppiResize_32f_C3R, nppiResize_8u_C3R,
-    NppiInterpolationMode_NPPI_INTER_CUBIC,
-    NppiInterpolationMode_NPPI_INTER_LANCZOS,
-    NppiInterpolationMode_NPPI_INTER_LINEAR,
-    NppiInterpolationMode_NPPI_INTER_NN,
-    NppiInterpolationMode_NPPI_INTER_SUPER,
-    NppiRect, NppiSize,
+    nppiResize_32f_C3R, nppiResize_8u_C3R, NppiInterpolationMode_NPPI_INTER_CUBIC,
+    NppiInterpolationMode_NPPI_INTER_LANCZOS, NppiInterpolationMode_NPPI_INTER_LINEAR,
+    NppiInterpolationMode_NPPI_INTER_NN, NppiInterpolationMode_NPPI_INTER_SUPER, NppiRect,
+    NppiSize,
 };
 
 fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
@@ -40,10 +37,26 @@ impl Resize for CudaImage<u8> {
         let (src_w, src_h) = (self.width(), self.height());
         let (dst_w, dst_h) = (dst.width(), dst.height());
 
-        let src_size = NppiSize { width: src_w as i32, height: src_h as i32 };
-        let dst_size = NppiSize { width: dst_w as i32, height: dst_h as i32 };
-        let src_rect = NppiRect { x: 0, y: 0, width: src_w as i32, height: src_h as i32 };
-        let dst_rect = NppiRect { x: 0, y: 0, width: dst_w as i32, height: dst_h as i32 };
+        let src_size = NppiSize {
+            width: src_w as i32,
+            height: src_h as i32,
+        };
+        let dst_size = NppiSize {
+            width: dst_w as i32,
+            height: dst_h as i32,
+        };
+        let src_rect = NppiRect {
+            x: 0,
+            y: 0,
+            width: src_w as i32,
+            height: src_h as i32,
+        };
+        let dst_rect = NppiRect {
+            x: 0,
+            y: 0,
+            width: dst_w as i32,
+            height: dst_h as i32,
+        };
 
         // ── Raw pointers via DevicePtr/DevicePtrMut trait ──────────────
         // Both the const and mutable CUdeviceptrs are offset by img_index
@@ -90,10 +103,26 @@ impl Resize for CudaImage<f32> {
         let (src_w, src_h) = (self.width(), self.height());
         let (dst_w, dst_h) = (dst.width(), dst.height());
 
-        let src_size = NppiSize { width: src_w as i32, height: src_h as i32 };
-        let dst_size = NppiSize { width: dst_w as i32, height: dst_h as i32 };
-        let src_rect = NppiRect { x: 0, y: 0, width: src_w as i32, height: src_h as i32 };
-        let dst_rect = NppiRect { x: 0, y: 0, width: dst_w as i32, height: dst_h as i32 };
+        let src_size = NppiSize {
+            width: src_w as i32,
+            height: src_h as i32,
+        };
+        let dst_size = NppiSize {
+            width: dst_w as i32,
+            height: dst_h as i32,
+        };
+        let src_rect = NppiRect {
+            x: 0,
+            y: 0,
+            width: src_w as i32,
+            height: src_h as i32,
+        };
+        let dst_rect = NppiRect {
+            x: 0,
+            y: 0,
+            width: dst_w as i32,
+            height: dst_h as i32,
+        };
 
         // nStep is in BYTES. height_stride counts f32 elements. Convert.
         let src_step_bytes = (self.layout.height_stride * std::mem::size_of::<f32>()) as i32;

@@ -112,7 +112,7 @@
 
             # Embed .nvidia-libs as rpath so compiled binaries resolve the
             # real NVIDIA driver libs at runtime.
-            export RUSTFLAGS="-C link-arg=-Wl,-rpath,$PWD/.nvidia-libs -C link-arg=-Wl,-rpath,${pkgs.glibc}/lib -L /usr/lib/x86_64-linux-gnu -L ${cudaPackages.cuda_nvrtc}/lib $RUSTFLAGS"
+            export RUSTFLAGS="-C link-arg=-Wl,-rpath,$PWD/.nvidia-libs -C link-arg=-Wl,-rpath,${pkgs.glibc}/lib -L /usr/lib/x86_64-linux-gnu -L ${cudaPackages.cuda_cudart}/lib/stubs -L ${cudaPackages.cuda_nvrtc}/lib $RUSTFLAGS"
           '';
         };
       }
