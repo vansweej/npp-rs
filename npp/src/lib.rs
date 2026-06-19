@@ -4,9 +4,9 @@
 //! - `cudarc` for CUDA device management (`Arc<CudaDevice>`, `CudaSlice<T>`)
 //! - `npp-sys` for generated FFI bindings to the NPP image domain (`nppi*` symbols)
 //!
-//! The core type is [`CudaImage<T>`], where `T: NppPixelType` covers the full NPP
+//! The core type is [`CudaImage<T>`](crate::image::CudaImage), where `T: NppPixelType` covers the full NPP
 //! primitive alphabet (~9 types). Operation capability is expressed via traits
-//! (e.g. [`Resize`], [`SwapChannels`]): an unsupported `(type, op)` pair simply
+//! (e.g. [`Resize`](crate::imageops::Resize), [`SwapChannels`](crate::imageops::SwapChannels)): an unsupported `(type, op)` pair simply
 //! has no trait impl, making it a compile-time error.
 //!
 //! Round-trip to host memory uses `TryFrom<&CudaImage<T>> for Vec<T>`.
@@ -20,7 +20,7 @@
 //!
 //! # Safety
 //!
-//! The [`CudaImage`] constructor requires an `Arc<CudaDevice>` handle; the device
+//! The [`CudaImage`](crate::image::CudaImage) constructor requires an `Arc<CudaDevice>` handle; the device
 //! must outlive all images created from it (C7). Raw-pointer extraction at the
 //! FFI boundary follows the pattern documented in `docs/spike-cudarc-ptr-bridge.md`.
 

@@ -1,0 +1,107 @@
+# npp-rs Architecture
+
+## Two-crate workspace
+
+| Directory | Crate | Purpose |
+|-----------|-------|---------|
+| `npp-sys/` | `npp-sys` | Bindgen-generated FFI to NPP image domain (`nppi*` symbols) |
+| `npp/` | `npp-rs` | Safe wrapper with `CudaImage<T>`, capability traits, operations |
+
+`npp-sys` is a thin generated layer — never edit it directly. `npp-rs` is the
+user-facing crate.
+
+## Device management via cudarc
+
+CUDA device management uses [`cudarc`](https://docs.rs/cudarc) 0.9:
+
+```
+CudaDevice::new(ordinal)?  →  Arc<CudaDevice>  →  CudaSlice<T>
+                                                      ↓
+                                            CudaView<'a, T>  (borrowed)
+                                            CudaViewMut<'a, T>  (mutable)
+```
+
+The `Arc<CudaDevice>` handle must outlive all images created from it (C7
+context-lifetime invariant). This is enforced for free by cudarc's internal
+`Arc<CudaDevice>` reference on every `CudaSlice<T>`.
+
+## The `NppPixelType` alphabet
+
+The sealed `NppPixelType` trait marks types that can be used as NPP pixel
+elements. It covers ~9 types across the NPP primitive alphabet.
+
+| NPP name | Rust type | Bits |
+|----------|-----------|------|
+| `8u` | `u8` | 8 |
+| `8s` | `i8` | 8 |
+| `16u` | `u16` | 16 |
+| `16s` | `i16` | 16 |
+| `32u` | `u32` | 32 |
+| `32s` | `i32` | 32 |
+| `32f` | `f32` | 32 |
+| `64f` | `f64` | 64 |
+| `16f` | `half::f16` | 16 (requires `half` crate — deferred to M2) |
+
+All types are constructible (allocatable + zeroable). Operation capability is
+expressed by **separate traits** — an unsupported `(type, op)` pair has no trait
+impl, making it a compile-time error.
+
+## Capability-trait model
+
+Operations are modelled as traits implemented on `CudaImage<T>`:
+
+```rust
+pub trait Resize: Sized {
+    fn resize(&self, dst: &mut Self, inter: ResizeInterpolation) -> Result<(), NppError>;
+}
+
+pub trait SwapChannels: Sized {
+    fn bgra_to_rgb(&self, dst: &mut Self) -> Result<(), NppError>;
+}
+```
+
+M1 implements `Resize` for `u8` and `f32`, and `SwapChannels` for `u8`. M2 adds
+the remaining types via macro codegen.
+
+## `Vec<T>` round-trip
+
+Host ↔ device transfer uses `TryFrom<&CudaImage<T>> for Vec<T>`:
+
+```rust
+let host: Vec<u8> = Vec::try_from(&gpu_image)?;
+```
+
+There is no `image` crate dependency in the core. Image-rs integration is a
+boundary feature (F3 on the roadmap).
+
+## Pointer bridge
+
+The cudarc → NPP pointer bridge follows a fixed pattern:
+
+```rust
+let cu_ptr = cudarc::driver::DevicePtr::device_ptr(&buf);
+let raw_ptr = (cu_ptr + offset) as *const T;
+```
+
+See `docs/spike-cudarc-ptr-bridge.md` for the authoritative pattern used at
+every NPP call site.
+
+## Module layout (`npp/src/`)
+
+| Module | Contents |
+|--------|----------|
+| `cuda.rs` | Device initialization (`CudaDevice::new`) |
+| `error.rs` | `NppError` enum, `check_status()` helper |
+| `image.rs` | `NppPixelType` trait, `CudaImage<T>`, `CudaImageView`, `CudaImageViewMut` |
+| `imageops.rs` | Capability trait definitions (`Resize`, `SwapChannels`) |
+| `layout.rs` | `CudaLayout` — packed memory layout description |
+| `resize_ops.rs` | `Resize` implementations for `u8` and `f32` |
+| `swap_channel_ops.rs` | `SwapChannels` implementation for `u8` |
+
+## Deferred boundaries
+
+- **image-rs** (F3): `From`/`TryFrom` edges at the boundary, not in the core.
+- **graphynx** (F4): Interop with the author's cudarc-based compute library.
+- **Signal ops** (F9): `npps*` symbols are excluded from the bindgen allowlist.
+
+See [docs/roadmap.md](roadmap.md) for the full post-M1 plan.
