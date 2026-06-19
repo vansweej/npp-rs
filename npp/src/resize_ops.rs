@@ -20,6 +20,15 @@ fn interpolation_mode(inter: ResizeInterpolation) -> i32 {
 
 /// Resize for `CudaImage<u8>` over `nppiResize_8u_C3R` (3-channel packed RGB).
 ///
+/// # nStep unit conversion
+///
+/// NPP's `nStep` is in **bytes**. `layout.height_stride` stores the per-row
+/// element count; we multiply by `size_of::<u8>()` to produce the byte step.
+/// This is the uniform pattern across all pixel types — for `u8` the multiply
+/// is a behavioural no-op (`size_of::<u8>() == 1`), but writing it explicitly
+/// keeps the impl structurally identical to the `f32` variant and prevents the
+/// C11 class of bug for future wider types.
+///
 /// The raw pointer for both src and dst is offset by `layout.img_index` so
 /// this impl works correctly on sub-images created via `CudaImage::sub_image`
 /// (whose `layout.img_index` carries the parent's offset). Because the
@@ -58,6 +67,10 @@ impl Resize for CudaImage<u8> {
             height: dst_h as i32,
         };
 
+        // nStep is in BYTES. height_stride counts u8 elements. Convert.
+        let src_step_bytes = (self.layout.height_stride * std::mem::size_of::<u8>()) as i32;
+        let dst_step_bytes = (dst.layout.height_stride * std::mem::size_of::<u8>()) as i32;
+
         // ── Raw pointers via DevicePtr/DevicePtrMut trait ──────────────
         // Both the const and mutable CUdeviceptrs are offset by img_index
         // so sub-images (which have img_index != 0) address the correct
@@ -71,11 +84,11 @@ impl Resize for CudaImage<u8> {
         let status = unsafe {
             nppiResize_8u_C3R(
                 src_ptr,
-                self.layout.height_stride as i32,
+                src_step_bytes,
                 src_size,
                 src_rect,
                 dst_ptr,
-                dst.layout.height_stride as i32,
+                dst_step_bytes,
                 dst_size,
                 dst_rect,
                 interpolation_mode(inter),
