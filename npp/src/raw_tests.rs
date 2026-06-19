@@ -5,6 +5,7 @@ mod tests {
         nppiFree, nppiMalloc_8u_C1, nppiMalloc_8u_C2, nppiMalloc_8u_C3, nppiMalloc_8u_C4,
     };
 
+    #[cfg_attr(not(feature = "gpu"), ignore)]
     #[test]
     fn test_allocations() {
         let width = 640;
