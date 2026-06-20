@@ -1,76 +1,157 @@
-# Spar Brief — M1 re-scoping (2026-06-19)
+# Brief: F1 architecture — per-family dumb macros, two-pipeline codegen
 
-## What happened
+## Feature / context
+F1 on the roadmap (macro-generated binding codegen). The housekeeping that
+unblocked it (byte-step unification, M1-plan retire, AGENTS.md sync) was
+completed in commits `c818f3c`–`1a09618`. Now designing the architecture
+itself.
 
-Socratic review of `reviews/M1-build-again-plan.md` against the actual code and
-real cudarc 0.9.15 API. The original plan made assumptions about:
-- `cudarc`'s ownership model (assumed similar to `rustacuda` — wrong; `CudaSlice<T>` is already `Send + Sync`)
-- The set of NPP pixel types (`u8`+`f32` only — wrong; NPP has ~9 primitive types)
-- Whether `image-rs`/`graphynx` integration forces type design now (resolved: no — both are boundary conversions, deferred)
-- The scope fences between M1 and M2 (author overruled: C11, `image` upgrade, and full-alphabet design pulled into M1)
+## Key decisions made (this session)
 
-## Design decisions made
+### 1. Per-family dumb macros, not a unified meta-framework
+NPP's own per-family signatures are too irregular for a single framework to
+abstract over. No string-interpolation of symbol names; emit dumb
+per-family `macro_rules!` that take the symbol and type as data, and expand
+to exactly the body the exemplars (now unified on byte-step form) already
+show. The macro is a **boilerplate reducer**, not an abstraction layer.
 
-### Ownership model (C3/C4/C7 — largely dissolved by cudarc)
-- `CudaImage<T>` owns a plain `CudaSlice<T>`. **No `Rc`, no `RefCell`, no `Arc<Mutex>`.** cudarc's `CudaSlice` is `Send + Sync`, and `.clone()` is a device-to-device copy (not aliasing).
-- `sub_image` uses `CudaSlice::slice()`/`slice_mut()` → returns a **borrowed `CudaImageView<'a>`**, replacing the old `Rc::clone` aliasing. The C4 src/dst aliasing hazard moves into the borrow checker for free.
-- cudarc's internal `Arc<CudaDevice>` on every `CudaSlice` prevents buffer-outlives-device (C7's residual concern).
+### 2. Resize-only scope for the first macro
+The Resize grid is genuinely wide (~8 types × 3 channel layouts) — the macro
+pays for itself immediately. SwapChannels stays hand-written for now because
+it has only one symbol (`nppiSwapChannels_8u_C4C3R`), so a macro would be a
+net complexity cost until more symbols exist.
 
-### Type system (C11 — pulled into M1)
-- `CudaImage<T: NppPixelType>` where `NppPixelType` is a marker trait covering the **full NPP primitive alphabet** (~9 types: `8u/8s/16u/16s/16f/32u/32s/32f/64f`).
-- Every `T` is *constructible* and *round-trippable to `Vec<T>`* in M1.
-- Operations are **capability traits** (`Resize`, `SwapChannels`, …). Impl'd per concrete type. Unsupported `(type, op)` cells have **no impl** → calling them is a **compile error**, not a runtime `NotImplemented`.
-- The C11 "signature lies" defect cannot recur: a type's *existence* (constructible) is orthogonal to its *capabilities* (which ops).
-- Hand-written `u8` and `f32` impls in M1 tune the trait shape for the **macro milestone** (deferred). No macro codegen in M1.
-- Generic pipelines remain possible: `fn pipeline<T>(img: CudaImage<T>) where CudaImage<T>: Resize`.
+### 3. Two derivation pipelines for the two axes of capability
+This is the core architecture. F1 must emit code that is parameterized over
+two independent axes, and they are derived from fundamentally different
+sources:
 
-### `image-rs` removed from M1 core
-- Round-trip uses **`TryFrom<&CudaImage<T>> for Vec<T>`** (plain typed byte buffer) — universal for all `T: DeviceRepr`, no per-type gate, no image-rs dep.
-- Image-rs conversions (`TryFrom<&CudaImage<u8>> for RgbImage`, etc.) are **deferred boundary conversions**, not core operations.
-- `image` crate dependency removed from `npp/Cargo.toml` for M1. Upgrade `0.23 → 0.25+` can happen when the boundary is re-added.
+| Axis | What | Source | Regeneration trigger |
+|------|------|--------|----------------------|
+| `type × channel` | Which NPP symbols exist for a given `(T, C)` | Scraped from bindgen output (`bindings.rs`) | Every build (bindgen regenerates) |
+| `type × interpolation` | Which interpolation modes are supported for a given `(T, mode)` | Probed from NPP at runtime on a GPU box | Human-initiated on CUDA bump; output committed |
 
-### Error type
-- `NppError` (thiserror-based), wrapping raw signed `NppStatus` from npp-sys.
-- `status >= 0` is success (fixes C1/NEW-01 — positive NPP warning codes are warnings, not errors).
-- cudarc errors wrapped as `#[from] DriverError` (**not** `CudaResultError`, which doesn't exist at this version).
-- `InvalidArgument` for validation errors (forward-compat for M2's C2 hardening).
-- **No `NotImplemented` variant** — made unrepresentable by capability traits.
+### 4. Scrape `type × channel` from `bindgen` output
+`bindings.rs` (gitignored, regenerated every build) already names every NPP
+symbol. A **suffix classifier grammar** — a small, hand-maintained set of
+~5 rules — selects `C1R`/`C3R`/`C4R` from a symbol suffix and rejects
+`AC4`, `P{n}`, `SqrPixel`, `Batch`, and other siblings that don't fit the
+simple channel-layout grid. This classifier is the *only* hand-maintained
+artifact on the channel axis. It lives alongside the probe output as
+committed source consumed at `macro_rules!` expansion time.
 
-### Crate versions
-- All pinned versions are **not binding**. Use latest (cudarc `0.9`, latest bindgen, latest thiserror, etc.). The old `image 0.23.13` is replaced or removed.
+### 5. Probe `type × mode` from NPP at runtime, not from prose
+The interpolation-mode validity matrix (`16f` ✗ Lanczos, etc.) **cannot** be
+scraped from function names — interpolation is a runtime `int`, not a symbol
+suffix. The library itself is the ground truth. A human-initiated GPU probe
+(a test harness run on a CUDA bump) exercises every `(type, mode)` cell and
+records which return success. Probe output is **committed to the repo** so
+CI and contributors (who have no GPU) have it at compile time.
 
-## Internal M1 ordering (mandatory sequence)
-1. **FFI pointer bridge spike** (bare-metal `u8` resize, no abstractions) — *must succeed before anything else proceeds.* Confirm CudaSlice → `CUdeviceptr` → offset arithmetic → NPP extern "C" call works. This is the highest-risk unknown.
-2. **`u8` resize + `Vec<u8>` round-trip** — end-to-end working with hardcoded (no traits yet).
-3. **Lift to `NppPixelType` + capability traits** — generalize the proven shape.
-4. **Hand-write `f32` `Resize` impl** — second exemplar to validate the trait architecture.
-5. **One golden-image correctness test** — a `u8` image in → resize → bytes out comparison. M1 must prove the port *computes*, not just compiles. (Addresses C12 at minimum level.)
+### 6. Probe output is a committed source artifact; `bindings.rs` is gitignored
+This is the inverse of the `bindings.rs` policy, and the asymmetry is
+*correct* for each artifact's regeneration constraint:
+- `bindings.rs` can be regenerated every build (CUDA SDK on the build
+  machine) → gitignored.
+- Probe output needs a GPU to produce and no GPU on CI → committed.
+- **Must be loudly documented** so contributors don't instinctively
+  `gitignore` the probe output, mistaking it for another generated artifact.
 
-## Plan for the `plan` agent
+### 7. Status-code spike is the gating prerequisite to the probe
+The probe must distinguish "mode unsupported" from "harness bug" (image too
+small for a kernel footprint) — otherwise a too-small probe image silently
+marks a valid cell as invalid. The spike runs on a GPU box and must produce
+a **closed taxonomy**:
 
-`reviews/M1-build-again-plan.md` is **stale on scope** but **sound on infrastructure**:
-- **Phase 1** (Nix shell, `build.rs` rewrite, toolchain): keep verbatim — nothing in this brief contradicts it.
-- **Phase 2** (cudarc port): **rewrite.** Steps must follow the internal ordering above. `image.rs` is fundamentally redesigned (no `Rc`/`RefCell`, no image-rs dep, `Vec<T>` round-trip, capability trait skeleton). `resize_ops.rs`/`swap_channel_ops.rs` are redesigned around capability traits with hand-written `u8` (and `f32` for resize) impls. The `build.rs` redesign from Phase 1 must also add bindgen `allowlist_function("nppi.*")` + `allowlist_type("Nppi.*")` + `allowlist_var("Nppi.*")` as planned.
-- **Phase 3** (test tiering): keep verbatim — the `gpu` feature gate and `#[cfg_attr(not(feature = "gpu"), ignore)]` pattern are unaffected.
-- **Phase 4** (docs): update to reflect the new design (no `image` crate core dep, `Vec<T>` round-trip, capability traits).
-- **Phase 5** (README/CI): keep verbatim — README text must reference cudarc, not rustacuda, but the structure is fine.
-- **Definition of Done:** update. M1 ships `u8`+`f32` resize, `Vec<T>` round-trip, the full `NppPixelType` alphabet (constructible), and capability trait architecture — but **no macro, no `image-rs` conversion, no `u16/i16/…` operation impls.**
-- **OUT-OF-SCOPE:** move C11 (seal generic) *out* of the out-of-scope list (it's done in M1). Macro codegen, alphabet expansion beyond `u8`/`f32` ops, image-rs boundary, graphynx boundary, pixel-correctness test suite — all stay M2+.
+| `NppStatus` | Label | Probe action |
+|---|---|---|
+| `NPP_SUCCESS` (≥ 0) | supported | emit `true` for cell |
+| `NPP_INTERPOLATION_ERROR` (-22) | mode unsupported | emit nothing (cell = `false`) |
+| `-201` (pinned) | probe image too small | **FAIL LOUD** — do not emit a row |
+| anything else | unknown | **FAIL LOUD** — spike was incomplete |
 
-## Known-wrong details in the plan's Phase 2
-1. Error type is **`DriverError`**, not `CudaResultError`. (The plan guessed a non-existent type.)
-2. cudarc `alloc_zeros::<u8>(n)` is **safe** (the plan labelled it `unsafe`).
-3. `Vec::with_capacity` + `set_len` read-back (C5) — the plan says "preserve as-is." **Do not.** Replace with cudarc `dtoh_sync_copy` → `Vec<T>`, which deletes the C5 hazard outright.
-4. `Rc<RefCell<DeviceBuffer<T>>>` → plain `CudaSlice<T>`. The plan's "if C3/C4 deferred, preserve shape" branch is dead; no mechanical port.
-5. `image 0.23.13` is removed from core deps, not upgraded-in-place.
+The spike is kept as a committed CUDA-bump regression guard (not throwaway).
+The negative case uses an invalid interpolation value (999) since `16f` has no
+`nppiMalloc` allocator and `8u+Super`/`8u+Lanczos` are both supported on CUDA 12.9.
+The three pinned codes: positive=0, negative=-22, harness-bug=-201.
 
-## Deferred to next milestone (not M1)
-- Macro-based codegen for the remaining ~7 NPP pixel types
-- `image-rs` boundary conversions (`TryFrom` for `ImageBuffer`, etc.)
-- graphynx boundary conversions
-- `RgbImage<u8> → RgbImage<f32>` or any `u8`/`f32` pixel conversion ops
-- Golden-image test suite (C12 — M1 gets exactly one)
-- C2 `debug_assert!` ⇒ `Result` hardening (still M2 as planned; C11's type seal already mitigates the worst of it)
-- C8 streams/execution context
-- `bgra_to_rgb` for `f32` (or confirmation there are none)
-- Any `nppi*` symbol beyond what `u8` and `f32` resize need
+Prove by constructing three test cases:
+- **Known positive:** `f32 × Lanczos` (fully supported) → confirm `NPP_SUCCESS`.
+- **Known negative:** `8u × invalid-interpolation(999)` → capture the
+  exact `NppStatus` that means "unsupported" (NPP_INTERPOLATION_ERROR = -22).
+- **Deliberate harness bug:** tiny image (1×1) × Lanczos → confirm
+  the error code (-201) is *different* from the unsupported code.
+
+After the spike, the probe internally converts every `NppStatus` via this
+table and aborts on anything not in the taxonomy.
+
+## Rejected alternative: LLM-extraction of the interpolation matrix
+Having an LLM read NPP's prose docs and emit a capability table was the
+initial instinct but was rejected: it introduces a human-interpretation
+error mode (the LLM can hallucinate cells) for which the only validator is
+NPP itself. Runtime probing removes the interpreter entirely: NPP answers
+directly, with zero hallucination risk.
+
+## Rejected alternative: one grand macro framework
+A unified meta-framework that discovers symbols, generates traits, and
+emits impls was rejected in favor of per-family dumb macros. The meta-
+framework would need to understand every op family's signature variation,
+which is equivalent effort to maintaining per-family macros, with worse
+local reasoning.
+
+## Rejected alternative: runtime `NotImplemented` errors
+Every `(type, mode)` that is emitted compiles **only** if the probe confirmed
+it is valid. No runtime "not implemented" path — the build graph itself
+encodes the capability matrix.
+
+## Artifact inventory (new/changed)
+
+| Artifact | Status | Regeneration | Committed? |
+|----------|--------|-------------|------------|
+| `npp/src/resize_macros.rs` | **new** | Per-family `macro_rules!` | yes |
+| `npp/src/suffix_classifier.rs` | **new** | Hand-maintained ~5-rule grammar | yes |
+| `npp/src/resize_caps.rs` | **new** | Probe output (GPU needed) | **yes** (committed) |
+| `npp/src/resize_generated.rs` | **new** | Generator example output | **yes** (committed) |
+| `npp/tests/fixtures/nppiResize_symbols.txt` | **new** | Captured from one Nix build on a CUDA host | **yes** (committed) |
+| `npp-sys/src/bindings.rs` | existing | Bindgen every build | **no** (gitignored) |
+| `npp-sys/build.rs` | existing | Scraper entry point | yes |
+
+Channel count is **runtime data**, not a type parameter — `CudaImage::new(device, channels: u8, …)`,
+stored in `layout.channels`. The macro dispatches via `match self.channels()` to C1/C3/C4 symbols.
+`16f` cannot be driven from the safe layer (`half` crate disabled); it is probed via raw `npp_sys` FFI
+and skipped in the generator. The mode-safety question (decision #7 in the original brief) is resolved
+as **runtime-checked** against the committed `RESIZE_CAPS` table, not compile-time.
+
+The suffix classifier and probe output are the two committed sources the
+macro consumes. `bindings.rs` is consumed indirectly (the scraper reads it,
+the macro reads the scraper's output).
+
+A THIRD committed artifact exists purely for *testing*: a frozen corpus of
+real `nppiResize_*` symbol names. The classifier consumes the live
+(gitignored) `bindings.rs` at build time, but its *unit tests* run offline
+against this committed corpus — so the grammar can be validated with plain
+`cargo test`, no CUDA, no GPU.
+
+## Open questions (need the spike to answer)
+1. Does the unsupported code differ between type-level rejection (`16f` at
+   all) vs. mode-level rejection (Lanczos specifically)? The spike on
+   `16f × Lanczos` plus `16f × Linear` answers this.
+2. What is the minimum probe image size such that every *supported* mode
+   returns success? Determined by finding the largest kernel footprint
+   (Lanczos, Super) and allocating marginally above it.
+3. (Resolved) Where does the scraper / suffix classifier live? **Neither** —
+   the classifier is a plain Rust module: `fn classify(symbols: &[&str]) -> Vec<ClassifiedSymbol>`.
+   No build script, no OUT_DIR dependency. Its unit tests consume the
+   committed fixture (`nppiResize_symbols.txt`); the actual call site in a
+   build script (or wherever the macro-produced impls live) is responsible
+   for reading `bindings.rs` and passing symbol names into it. The
+   classifier itself is pure parsing — no cargo coupling.
+
+## Status (post-implementation)
+All items 0–6 above are **implemented**. The `impl_resize_for!` macro is defined
+in `resize_macros.rs`, the generator lives at `examples/gen_resize_impls.rs`, and
+the committed output is `src/resize_generated.rs`. The suffix classifier module
+(`suffix_classifier.rs`), probe table (`resize_caps.rs`), and spike spike
+(`tests/spike_npp_status.rs`) are all committed. Channel dispatch is runtime
+(match on `CudaImage::channels()`). Mode safety is runtime (`mode_supported`
+against `RESIZE_CAPS`). See `docs/roadmap.md` for the final architecture.

@@ -35,8 +35,16 @@ pub mod image;
 pub mod imageops;
 /// Packed memory layout description.
 pub mod layout;
-/// `Resize` implementations for `u8` and `f32`.
+/// GPU-probed (type, interpolation) support matrix for Resize.
+pub mod resize_caps;
+/// Generated `impl Resize` for all supported types (committed artifact).
+pub mod resize_generated;
+/// Macro to generate `impl Resize` for image types.
+pub mod resize_macros;
+/// Resize helper functions (`interpolation_mode`, `mode_supported`).
 pub mod resize_ops;
+/// Suffix classifier for NPP symbol names.
+pub mod suffix_classifier;
 /// `SwapChannels` implementation for `u8`.
 pub mod swap_channel_ops;
 
