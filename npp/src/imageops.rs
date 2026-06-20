@@ -3,7 +3,7 @@ use crate::error::NppError;
 /// Interpolation methods supported by NPP resize operations.
 ///
 /// Note: `Lanczos` is not supported for 16f channel types (NPP restriction).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResizeInterpolation {
     /// Nearest-neighbor interpolation (no anti-aliasing).
     NearestNeighbor,

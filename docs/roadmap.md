@@ -41,34 +41,45 @@ so they must live in the roadmap before the M1 plan document is deleted.
 
 ---
 
-## F1 — Macro-generated binding codegen *(recommended first after M1)*
+## F1 — Macro-generated binding codegen *(implemented)*
 
-**What:** Replace the hand-written `u8`/`f32` capability-trait impls from M1 with
-macro-generated impls covering the full `NppPixelType` alphabet.
+**What:** Replaced the hand-written `u8`/`f32` capability-trait impls from M1
+with macro-generated impls covering the full `NppPixelType` alphabet that has
+NPP resize symbols.
 
-**Why:** M1 deliberately hand-writes two exemplars (`u8`, `f32`) precisely so
-this milestone has a proven, trait-shaped target to generalize from. The macro's
-job is "emit exactly what the M1 hand-written impls look like, parameterized
-over type/channel/op."
+**Architecture — two derivation pipelines:**
 
-**Known hard problems:**
-- *Irregular NPP symbol grid.* Naming has multiple axes that don't all compose:
-  element type (`8u`/`32f`/…), channel count (`C1`/`C3`/`C4`),
-  channel-changing ops (`C4C3R` for `bgra_to_rgb` — breaks a single-`C<n>`
-  template), ROI vs scaled (`R` vs `Sfs`), stream-context variants. The macro
-  can't string-interpolate a suffix; it must select from a hand-curated table
-  of which symbols actually exist.
-- *Sparse capability matrix.* Even within one op, `(type × mode)` is sparse
-  (e.g. `16f` does not support Lanczos resize). "Type supported" ≠ "all modes
-  supported."
-- *Verification must be compile-time, not link-time.* The bindgen `nppi*`
-  allowlist output (`bindings.rs`) should be the source of truth: generate calls
-  only over symbols bindgen actually emitted, so a wrong table entry is a
-  `npp_sys::` "item not found" compile error — not an `undefined reference` at
-  the end of a multi-minute link.
+The codegen uses two independent pipelines for the two axes of capability:
 
-**Dependencies:** Hard-depends on M1 (needs the proven trait exemplars and the
-validated FFI pointer bridge).
+| Axis | What | Source | Policy |
+|------|------|--------|--------|
+| `type × channel` | Which NPP symbols exist for a given `(T, C)` | Scraped from committed corpus (`tests/fixtures/nppiResize_symbols.txt`) → `suffix_classifier::classify` → `examples/gen_resize_impls`. Committed output: `src/resize_generated.rs` | Re-run generator on CUDA bump |
+| `type × interpolation` | Which interpolation modes are supported for a given `(T, mode)` | Probed at runtime via `tests/probe_resize_caps.rs` (GPU-gated). Committed output: `src/resize_caps.rs` | Re-probe on CUDA bump |
+
+**Key structural decisions:**
+- **Channel count is runtime data**, not a type parameter (`CudaImage::new(device, channels: u8, …)`
+  stored in `layout.channels`). The macro dispatches via `match self.channels()` to C1/C3/C4 symbols.
+- **Mode safety is runtime-checked** against the committed `RESIZE_CAPS` table via `mode_supported()`,
+  not a compile-time error.
+- **`16f` is excluded** from the safe layer (`half` crate disabled). The alias probe exercises it via
+  raw `npp_sys` FFI but the generator skips it.
+- **The status-code spike** (`tests/spike_npp_status.rs`) is a committed CUDA-bump regression guard,
+  not a throwaway diagnostic. Three pinned NppStatus codes: success=0, interpolation-error=-22,
+  harness-bug=-201.
+
+**New committed artifacts:**
+- `src/suffix_classifier.rs` — pure string-parsing `classify()` function with 18 offline tests.
+- `src/resize_macros.rs` — `impl_resize_for!` macro (crate-wide via `#[macro_export]`).
+- `src/resize_generated.rs` — macro invocations for `u8`, `u16`, `i16`, `f32`, each with C1/C3/C4 arms.
+- `src/resize_caps.rs` — GPU-probed `(type, interpolation)` support matrix.
+- `tests/fixtures/nppiResize_symbols.txt` — captured corpus from CUDA 12.9.
+- `tests/spike_npp_status.rs` — status-code taxonomy pinning (GPU-gated).
+- `tests/probe_resize_caps.rs` — the GPU probe harness (GPU-gated).
+- `examples/gen_resize_impls.rs` — generator that reads the corpus and emits `resize_generated.rs`.
+
+**Generated (gitignored):** `npp-sys/src/bindings.rs` (bindgen, every build).
+
+**Dependencies:** M1 (needed the proven trait exemplars and the validated FFI pointer bridge).
 
 ---
 
