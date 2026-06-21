@@ -14,12 +14,14 @@ use crate::error::NppError;
 /// results in `cuMemFree` against a destroyed context. cudarc's internal
 /// `Arc<CudaDevice>` reference on every `CudaSlice` prevents this for the
 /// common case.
+#[cfg(not(tarpaulin_include))]
 pub fn initialize_cuda_device(ordinal: usize) -> Result<Arc<CudaDevice>, NppError> {
     let dev = CudaDevice::new(ordinal)?;
     Ok(dev)
 }
 
 /// Convenience wrapper: initialize device 0 (the default GPU).
+#[cfg(not(tarpaulin_include))]
 pub fn default_cuda_device() -> Result<Arc<CudaDevice>, NppError> {
     initialize_cuda_device(0)
 }

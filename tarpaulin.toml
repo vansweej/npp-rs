@@ -1,0 +1,14 @@
+[tarpaulin]
+engine = "Ptrace"
+workspace = true
+fail-under = 90
+exclude-files = [
+    "npp-sys/*",
+    "npp-codegen/src/*",
+    "*_generated.rs",
+    "*_macros.rs",
+    "npp/src/test_helpers.rs",
+    "*/build.rs",
+    "npp-codegen/examples/*",
+    "npp/examples/*",
+]
