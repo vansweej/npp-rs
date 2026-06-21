@@ -1,5 +1,9 @@
 # NPP Bindings in npp-rs
 
+> Most operation families are now **macro-generated** via the `npp-codegen` crate.
+> See [docs/codegen-architecture.md](codegen-architecture.md) for the automated
+> approach — this guide covers the lower-level FFI details for manual wrapping.
+
 ## The bindgen allowlist
 
 The bindgen configuration in `npp-sys/build.rs` restricts generated bindings to
@@ -15,13 +19,17 @@ Signal-processing symbols (`npps*`) are excluded — `wrapper.h` comments out th
 `npps.h` include. This reduces bindgen output size and keeps the FFI surface
 focused.
 
-## Functions wrapped in M1
+## Functions covered
 
-| NPP function | Wrapper | Description |
-|-------------|---------|-------------|
-| `nppiResize_8u_C3R` | `Resize for CudaImage<u8>` | 3-channel u8 resize |
-| `nppiResize_32f_C3R` | `Resize for CudaImage<f32>` | 3-channel f32 resize (with byte-step conversion) |
-| `nppiSwapChannels_8u_C4C3R` | `SwapChannels for CudaImage<u8>` | BGRA (4ch) → RGB (3ch) reorder |
+Operation families are now **macro-generated** by the `npp-codegen` crate (see
+[docs/codegen-architecture.md](codegen-architecture.md)). The following families
+have generated impls covering the full `NppPixelType` alphabet:
+
+| Family | Types | Channels | Source |
+|--------|-------|----------|--------|
+| `Resize` | `u8`, `u16`, `i16`, `f32` | C1, C3, C4 | `resize_generated.rs` |
+| `SwapChannels` | `u8`, `u16`, `i16`, `f32`, `i32` | C4C3R only | `swap_channels_generated.rs` |
+| `Mean` | `u8`, `u16`, `i16`, `f32` | C1, C3, C4 | `mean_generated.rs` |
 
 ## How to add a new NPP operation
 

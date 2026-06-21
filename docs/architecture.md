@@ -58,10 +58,16 @@ pub trait Resize: Sized {
 pub trait SwapChannels: Sized {
     fn bgra_to_rgb(&self, dst: &mut Self) -> Result<(), NppError>;
 }
+
+pub trait Mean: Sized {
+    fn mean(&self) -> Result<Vec<f64>, NppError>;
+}
 ```
 
-M1 implements `Resize` for `u8` and `f32`, and `SwapChannels` for `u8`. M2 adds
-the remaining types via macro codegen.
+F2 expanded all three traits to cover the full `NppPixelType` alphabet via
+macro codegen (see `docs/codegen-architecture.md`). Each trait definition
+lives in `imageops.rs`; macro-generated impls live in `*_generated.rs` files
+committed to the repo.
 
 ## `Vec<T>` round-trip
 

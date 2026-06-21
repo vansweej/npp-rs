@@ -38,9 +38,7 @@ fn make_input() -> Vec<u8> {
 /// Generated on NVIDIA GPU. Bit-exact integer arithmetic (no floating point).
 ///
 /// NOTE: Set this to `&[]` initially, run on GPU, copy the printed values here.
-const EXPECTED: &[f64] = &[
-    // Golden data will be pinned after first GPU test run
-];
+const EXPECTED: &[f64] = &[115.5, 96.0, 128.0];
 
 const EPSILON: f64 = 1e-12;
 

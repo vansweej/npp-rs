@@ -4,6 +4,12 @@ Produced by `cargo run -p npp-codegen` on 2026-06-21. The coverage curve
 determines the codegen strategy (Phase 1.4). The shape histogram head lists
 the exact macros to write. The singleton tail sizes the un-automated risk.
 
+> **F2 selection:** Three families were implemented from this survey — **Resize**
+> (top-2 shape, 27 functions), **SwapChannels** (shape `SRC+STEP, DST+STEP, SIZE,
+> CHANNEL_ORDER`, 20 functions), and **Mean** (shape `SRC+STEP, SIZE, ptr:dst,
+> ptr:dst`, 16 functions). See `docs/codegen-architecture.md` for the generation
+> flow and `npp-codegen/src/gen_impls.rs` for their `FamilyDescriptor` definitions.
+
 == TOTALS ==
 distinct functions (base, _Ctx collapsed) : 5606
   ...of which have a _Ctx twin            : 5515

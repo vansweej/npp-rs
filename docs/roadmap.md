@@ -116,7 +116,7 @@ the generation flow.
 | 3 | Golden‑test helper (`test_helpers::assert_golden`) | `434b6af` |
 | 4 | SwapChannels macro generation (C4C3R 4→3 conversion) | `cb49c21` |
 | 5 | Mean reduction (two‑call scratch‑buffer dance) | `5763e4f` |
-| 6 | Documentation reconciliation | (this commit) |
+| 6 | Documentation reconciliation | `da6d156` |
 
 **Committed artifacts added by F2:**
 - `npp-codegen/` — entire crate (classify, shape, gen_impls, survey_shapes binary)
@@ -135,7 +135,7 @@ the generation flow.
 
 **Open items (deferred):**
 - The `Resize` family still uses `16f`-skip and has no golden test for non‑u8 types.
-- `Mean` golden test is unpinned (needs a GPU run to capture golden bytes).
+- Golden tests for all three families (Resize, SwapChannels, Mean) are pinned and GPU-verified.
 - `32u`, `64f`, `8s` have no `nppiMean_*` symbols with standard channel variants.
 - `npp-codegen` does not handle the `Mean_StdDev` or other compound op families yet.
 
