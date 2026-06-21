@@ -29,6 +29,10 @@ pub struct FamilyDescriptor {
     pub skip_16f: bool,
     /// Additional use statements to include in generated output.
     pub use_statements: &'static [&'static str],
+    /// For two-call ops (e.g. Mean), the NPP prefix for the buffer-size query
+    /// function. When set, the generator emits `($mean_sym, $buffer_sym)` tuples
+    /// instead of bare symbol names. `None` for standard single-call ops.
+    pub get_buffer_host_size_prefix: Option<&'static str>,
 }
 
 /// Descriptor for the NPP Resize family.
@@ -47,6 +51,7 @@ pub static RESIZE_FAMILY: FamilyDescriptor = FamilyDescriptor {
         "use crate::impl_resize_for;",
         "use npp_sys::{NppiRect, NppiSize};",
     ],
+    get_buffer_host_size_prefix: None,
 };
 
 /// Descriptor for the NPP SwapChannels family.
@@ -65,6 +70,26 @@ pub static SWAP_CHANNELS_FAMILY: FamilyDescriptor = FamilyDescriptor {
         "use crate::impl_swap_channels_for;",
         "use npp_sys::NppiSize;",
     ],
+    get_buffer_host_size_prefix: None,
+};
+
+/// Descriptor for the NPP Mean family (two-call dance with scratch buffer).
+pub static MEAN_FAMILY: FamilyDescriptor = FamilyDescriptor {
+    npp_prefix: "nppiMean_",
+    accepted_channels: &[1, 3, 4],
+    custom_variants: &[],
+    macro_name: "impl_mean_for",
+    rust_macro_path: "impl_mean_for",
+    expected_shape: "SRC+STEP, SIZE, SCRATCH_BUF, OUT_SCALAR",
+    skip_16f: true,
+    use_statements: &[
+        "use crate::error::{check_status, NppError};",
+        "use crate::image::CudaImage;",
+        "use crate::imageops::Mean;",
+        "use crate::impl_mean_for;",
+        "use npp_sys::NppiSize;",
+    ],
+    get_buffer_host_size_prefix: Some("nppiMeanGetBufferHostSize_"),
 };
 
 /// Map NPP type token to Rust type.
@@ -152,7 +177,17 @@ pub fn generate_for_family(
         for ch in ch_variants.keys() {
             let variant = &ch_variants[ch];
             let sym = format!("npp_sys::nppi{}_{}_{}", family_name, token, variant);
-            block.push_str(&format!("        {} => {},\n", ch, sym));
+            if let Some(buf_prefix) = family.get_buffer_host_size_prefix {
+                // Two-call dance: emit (mean_sym, buffer_sym) tuple
+                let buf_prefix_clean = buf_prefix
+                    .strip_prefix("nppi")
+                    .and_then(|s| s.strip_suffix("_"))
+                    .unwrap_or("");
+                let buffer_sym = format!("npp_sys::nppi{}_{}_{}", buf_prefix_clean, token, variant);
+                block.push_str(&format!("        {} => ({}, {}),\n", ch, sym, buffer_sym));
+            } else {
+                block.push_str(&format!("        {} => {},\n", ch, sym));
+            }
         }
         block.push_str("});");
         macro_blocks.push(block);

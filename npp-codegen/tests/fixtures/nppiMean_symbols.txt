@@ -1,0 +1,15 @@
+# Captured from CUDA 12.9 via bindgen — regenerate on CUDA bump
+# Mean: standard C1R/C3R/C4R only (no C1MR/C3CMR/AC4R)
+# GetBufferHostSize symbols are derived from these by the generator
+nppiMean_16s_C1R
+nppiMean_16s_C3R
+nppiMean_16s_C4R
+nppiMean_16u_C1R
+nppiMean_16u_C3R
+nppiMean_16u_C4R
+nppiMean_32f_C1R
+nppiMean_32f_C3R
+nppiMean_32f_C4R
+nppiMean_8u_C1R
+nppiMean_8u_C3R
+nppiMean_8u_C4R

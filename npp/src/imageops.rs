@@ -53,3 +53,20 @@ pub trait SwapChannels: Sized {
     /// Returns `NppError::Npp` if the underlying NPP call fails.
     fn bgra_to_rgb(&self, dst: &mut Self) -> Result<(), NppError>;
 }
+
+/// Capability trait for NPP Mean (pixel-value average).
+///
+/// Returns one `f64` per channel representing the mean of all pixels in the
+/// image. Internally uses the NPP two-call dance: `nppiMeanGetBufferHostSize_*`
+/// to query scratch buffer size, then `nppiMean_*` to compute.
+///
+/// # Errors
+///
+/// Returns `NppError` if the underlying NPP call fails.
+pub trait Mean: Sized {
+    /// Compute per-channel mean pixel values.
+    ///
+    /// Returns a `Vec<f64>` with one entry per channel (e.g. 3 values for a
+    /// 3-channel image).
+    fn mean(&self) -> Result<Vec<f64>, NppError>;
+}

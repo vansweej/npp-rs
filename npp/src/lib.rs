@@ -35,6 +35,10 @@ pub mod image;
 pub mod imageops;
 /// Packed memory layout description.
 pub mod layout;
+/// Generated `impl Mean` for all supported types (committed artifact).
+pub mod mean_generated;
+/// Macro to generate `impl Mean` for image types.
+pub mod mean_macros;
 /// GPU-probed (type, interpolation) support matrix for Resize.
 pub mod resize_caps;
 /// Generated `impl Resize` for all supported types (committed artifact).
