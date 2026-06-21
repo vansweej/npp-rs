@@ -4,7 +4,9 @@
 //! produces a shape histogram showing the distribution of NPP functions
 //! across normalized parameter-role patterns.
 
+use npp_codegen::shape::derive_shape;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -34,7 +36,7 @@ fn main() {
 
     // Classify functions by shape
     let mut shape_histogram: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut families: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut families: HashSet<String> = HashSet::new();
     let mut ctx_count = 0;
 
     for (full_name, params) in &functions {
@@ -53,7 +55,7 @@ fn main() {
             families.insert(family);
         }
 
-        // Derive shape from parameters
+        // Derive shape from parameters (using library module)
         let shape = derive_shape(params);
 
         shape_histogram
@@ -144,8 +146,8 @@ fn main() {
 
     // Shape histogram
     println!("== SHAPE HISTOGRAM ==");
-    for (shape, funcs) in &shape_counts {
-        println!("  {} | {} | {}", shape, funcs.len(), shape);
+    for (count, shape) in &shape_counts {
+        println!("  {} | {} | {}", count, shape, shape);
     }
     println!();
 
@@ -238,170 +240,6 @@ fn extract_family(name: &str) -> Option<String> {
         Some(family)
     } else {
         None
-    }
-}
-
-/// Derive shape from function parameters
-fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>) -> String {
-    let mut classified = Vec::new();
-
-    for param in params {
-        if let syn::FnArg::Typed(pat_type) = param {
-            let param_name = extract_param_name(&pat_type.pat);
-            let role = classify_param(&pat_type.ty, &pat_type.pat);
-            if !role.is_empty() && role != "SKIP" {
-                classified.push((param_name, role));
-            }
-        }
-    }
-
-    // Merge adjacent parameters based on naming patterns
-    let mut merged = Vec::new();
-    let mut i = 0;
-    while i < classified.len() {
-        let (name, role) = &classified[i];
-
-        // Check for SRC+STEP pattern: pSrc/pSource followed by nSrcStep/nSourceStep
-        if (name.starts_with("pSrc") || name.starts_with("pSource")) && role.contains("ptr") {
-            if i + 1 < classified.len() {
-                let (next_name, next_role) = &classified[i + 1];
-                if (next_name.contains("SrcStep") || next_name.contains("SourceStep"))
-                    && next_role.contains("i32")
-                {
-                    merged.push("SRC+STEP".to_string());
-                    i += 2;
-                    continue;
-                }
-            }
-        }
-
-        // Check for DST+STEP pattern: pDst followed by nDstStep
-        if (name.starts_with("pDst") || name.starts_with("pDestination")) && role.contains("ptr") {
-            if i + 1 < classified.len() {
-                let (next_name, next_role) = &classified[i + 1];
-                if (next_name.contains("DstStep") || next_name.contains("DestinationStep"))
-                    && next_role.contains("i32")
-                {
-                    merged.push("DST+STEP".to_string());
-                    i += 2;
-                    continue;
-                }
-            }
-        }
-
-        // Otherwise, just add the role as-is
-        merged.push(role.clone());
-        i += 1;
-    }
-
-    merged.join(", ")
-}
-
-/// Classify a single parameter
-fn classify_param(ty: &syn::Type, pat: &syn::Pat) -> String {
-    let param_name = extract_param_name(pat);
-
-    match ty {
-        syn::Type::Ptr(ptr) => {
-            let is_mut = ptr.mutability.is_some();
-            let inner_ty = &ptr.elem;
-
-            // Check for pointer types
-            if let syn::Type::Path(type_path) = &**inner_ty {
-                let type_name = type_path
-                    .path
-                    .segments
-                    .last()
-                    .map(|s| s.ident.to_string())
-                    .unwrap_or_default();
-
-                match type_name.as_str() {
-                    // Pixel data pointers
-                    "Npp8u" | "Npp8s" | "Npp16u" | "Npp16s" | "Npp32u" | "Npp32s" | "Npp32f" | "Npp64f" => {
-                        if is_mut {
-                            "ptr:dst".to_string()
-                        } else {
-                            "ptr:src".to_string()
-                        }
-                    }
-                    // Step parameters (int pointers)
-                    "c_int" | "i32" => {
-                        if param_name.contains("Step") || param_name.contains("step") {
-                            "i32:step".to_string()
-                        } else if param_name.contains("Divisor")
-                            || param_name.contains("Value")
-                            || param_name.contains("Constant")
-                            || param_name.contains("ScaleFactor")
-                        {
-                            "CONST_SCALAR".to_string()
-                        } else {
-                            "MISC:i32".to_string()
-                        }
-                    }
-                    // Buffer pointers
-                    "c_uint" | "u32" | "u8" => {
-                        if param_name.contains("Buffer") || param_name.contains("buffer") {
-                            "SCRATCH_BUF".to_string()
-                        } else if param_name.contains("Divisor")
-                            || param_name.contains("Value")
-                            || param_name.contains("Constant")
-                            || param_name.contains("ScaleFactor")
-                        {
-                            "CONST_SCALAR".to_string()
-                        } else {
-                            "MISC:ptr".to_string()
-                        }
-                    }
-                    _ => "MISC:ptr".to_string(),
-                }
-            } else {
-                "MISC:ptr".to_string()
-            }
-        }
-        syn::Type::Path(type_path) => {
-            let type_name = type_path
-                .path
-                .segments
-                .last()
-                .map(|s| s.ident.to_string())
-                .unwrap_or_default();
-
-            match type_name.as_str() {
-                "NppiSize" => "SIZE".to_string(),
-                "NppiRect" => "RECT".to_string(),
-                "NppiPoint" => {
-                    if param_name.contains("anchor") {
-                        "ANCHOR".to_string()
-                    } else {
-                        "POINT".to_string()
-                    }
-                }
-                "NppStreamContext" => "SKIP".to_string(),
-                "c_int" | "i32" => {
-                    if param_name.contains("Interpolation") {
-                        "INTERP".to_string()
-                    } else if param_name.contains("Divisor")
-                        || param_name.contains("Value")
-                        || param_name.contains("Constant")
-                        || param_name.contains("ScaleFactor")
-                    {
-                        "CONST_SCALAR".to_string()
-                    } else {
-                        "MISC:i32".to_string()
-                    }
-                }
-                _ => format!("MISC:{}", type_name),
-            }
-        }
-        _ => "MISC:other".to_string(),
-    }
-}
-
-/// Extract parameter name from pattern
-fn extract_param_name(pat: &syn::Pat) -> String {
-    match pat {
-        syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
-        _ => String::new(),
     }
 }
 

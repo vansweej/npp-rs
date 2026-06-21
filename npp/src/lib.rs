@@ -43,8 +43,6 @@ pub mod resize_generated;
 pub mod resize_macros;
 /// Resize helper functions (`interpolation_mode`, `mode_supported`).
 pub mod resize_ops;
-/// Suffix classifier for NPP symbol names.
-pub mod suffix_classifier;
 /// `SwapChannels` implementation for `u8`.
 pub mod swap_channel_ops;
 

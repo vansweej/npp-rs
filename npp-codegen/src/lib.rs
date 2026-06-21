@@ -7,9 +7,19 @@
 //! ## Crate roles
 //! - **survey_shapes** (`bin`): produces the shape histogram.
 //! - **classify**: symbol-name parser extracting (op, type, channel).
-//! - **generators**: emit `impl_*_for!` invocation lists.
+//! - **shape**: parameter-role classification and shape derivation.
+//! - **gen_impls**: generators that emit `impl_*_for!` invocation lists.
 //!
 //! See `docs/codegen-architecture.md` for the full architecture with mermaid
 //! diagrams.
 
 #![deny(missing_docs)]
+
+/// Symbol classifier for NPP families (parameterized by prefix and channel variants).
+pub mod classify;
+
+/// Shape derivation from NPP function parameter lists.
+pub mod shape;
+
+/// Generators that emit `impl_*_for!` invocations for a given family.
+pub mod gen_impls;
