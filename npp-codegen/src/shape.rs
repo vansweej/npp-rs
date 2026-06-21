@@ -27,30 +27,30 @@ pub fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token:
         let (name, role) = &classified[i];
 
         // Check for SRC+STEP pattern: pSrc/pSource followed by nSrcStep/nSourceStep
-        if (name.starts_with("pSrc") || name.starts_with("pSource")) && role.contains("ptr") {
-            if i + 1 < classified.len() {
-                let (next_name, next_role) = &classified[i + 1];
-                if (next_name.contains("SrcStep") || next_name.contains("SourceStep"))
-                    && next_role.contains("i32")
-                {
-                    merged.push("SRC+STEP".to_string());
-                    i += 2;
-                    continue;
-                }
+        if (name.starts_with("pSrc") || name.starts_with("pSource")) && role.contains("ptr")
+            && i + 1 < classified.len()
+        {
+            let (next_name, next_role) = &classified[i + 1];
+            if (next_name.contains("SrcStep") || next_name.contains("SourceStep"))
+                && next_role.contains("i32")
+            {
+                merged.push("SRC+STEP".to_string());
+                i += 2;
+                continue;
             }
         }
 
         // Check for DST+STEP pattern: pDst followed by nDstStep
-        if (name.starts_with("pDst") || name.starts_with("pDestination")) && role.contains("ptr") {
-            if i + 1 < classified.len() {
-                let (next_name, next_role) = &classified[i + 1];
-                if (next_name.contains("DstStep") || next_name.contains("DestinationStep"))
-                    && next_role.contains("i32")
-                {
-                    merged.push("DST+STEP".to_string());
-                    i += 2;
-                    continue;
-                }
+        if (name.starts_with("pDst") || name.starts_with("pDestination")) && role.contains("ptr")
+            && i + 1 < classified.len()
+        {
+            let (next_name, next_role) = &classified[i + 1];
+            if (next_name.contains("DstStep") || next_name.contains("DestinationStep"))
+                && next_role.contains("i32")
+            {
+                merged.push("DST+STEP".to_string());
+                i += 2;
+                continue;
             }
         }
 
@@ -108,12 +108,11 @@ pub fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token:
         // Check for SCRATCH_BUF: pBuffer/ppBuffer/hpBuffer
         if (name.contains("Buffer") || name.contains("buffer") || name.contains("hpBuffer"))
             && (role.contains("ptr") || role.contains("i32") || role.contains("u32"))
+            && (role.contains("i32") || role.contains("u32"))
         {
-            if role.contains("i32") || role.contains("u32") {
-                merged.push("SCRATCH_BUF".to_string());
-                i += 1;
-                continue;
-            }
+            merged.push("SCRATCH_BUF".to_string());
+            i += 1;
+            continue;
         }
 
         // Otherwise, just add the role as-is

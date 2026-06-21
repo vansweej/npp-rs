@@ -43,8 +43,10 @@ pub mod resize_generated;
 pub mod resize_macros;
 /// Resize helper functions (`interpolation_mode`, `mode_supported`).
 pub mod resize_ops;
-/// `SwapChannels` implementation for `u8`.
-pub mod swap_channel_ops;
+/// Generated `impl SwapChannels` for all supported types (committed artifact).
+pub mod swap_channels_generated;
+/// Macro to generate `impl SwapChannels` for image types.
+pub mod swap_channels_macros;
 /// Golden-test assertion helper (GPU-gated).
 #[cfg(feature = "gpu")]
 pub mod test_helpers;

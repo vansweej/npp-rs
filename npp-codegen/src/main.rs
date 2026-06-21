@@ -60,7 +60,7 @@ fn main() {
 
         shape_histogram
             .entry(shape)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(base_name);
     }
 
@@ -159,7 +159,7 @@ fn main() {
             if let Some(family) = extract_family(func) {
                 *family_shape_map
                     .entry(shape.clone())
-                    .or_insert_with(BTreeMap::new)
+                    .or_default()
                     .entry(family)
                     .or_insert(0) += 1;
             }
@@ -206,7 +206,7 @@ fn find_bindings_rs() -> PathBuf {
 
     // Try to find it via cargo
     let output = Command::new("find")
-        .args(&["target", "-name", "bindings.rs", "-path", "*/npp-sys/*"])
+        .args(["target", "-name", "bindings.rs", "-path", "*/npp-sys/*"])
         .output()
         .expect("Failed to run find");
 

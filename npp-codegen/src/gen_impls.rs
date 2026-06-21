@@ -17,6 +17,8 @@ pub struct FamilyDescriptor {
     pub npp_prefix: &'static str,
     /// Accepted channel counts.
     pub accepted_channels: &'static [u8],
+    /// Custom variant suffixes beyond C1R/C3R/C4R, e.g. `(4, "C4C3R")`.
+    pub custom_variants: &'static [(u8, &'static str)],
     /// Name of the Rust macro, e.g. `"impl_resize_for"` or `"impl_swap_channels_for"`.
     pub macro_name: &'static str,
     /// Rust macro path for invocation (prepended with `impl_` or equivalent).
@@ -33,6 +35,7 @@ pub struct FamilyDescriptor {
 pub static RESIZE_FAMILY: FamilyDescriptor = FamilyDescriptor {
     npp_prefix: "nppiResize_",
     accepted_channels: &[1, 3, 4],
+    custom_variants: &[],
     macro_name: "impl_resize_for",
     rust_macro_path: "impl_resize_for",
     expected_shape: "SRC+STEP, SIZE, RECT, DST+STEP, SIZE, RECT, INTERP",
@@ -49,7 +52,8 @@ pub static RESIZE_FAMILY: FamilyDescriptor = FamilyDescriptor {
 /// Descriptor for the NPP SwapChannels family.
 pub static SWAP_CHANNELS_FAMILY: FamilyDescriptor = FamilyDescriptor {
     npp_prefix: "nppiSwapChannels_",
-    accepted_channels: &[3, 4],
+    accepted_channels: &[4],
+    custom_variants: &[(4, "C4C3R")],
     macro_name: "impl_swap_channels_for",
     rust_macro_path: "impl_swap_channels_for",
     expected_shape: "SRC+STEP, DST+STEP, SIZE, CHANNEL_ORDER",
@@ -97,15 +101,19 @@ pub fn generate_for_family(
     symbols: &[String],
 ) -> String {
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified = classify(&symbol_refs, family.npp_prefix, family.accepted_channels);
+    let classified = classify(&symbol_refs, family.npp_prefix, family.accepted_channels, family.custom_variants);
 
-    // Group by type_token, collecting unique channel counts.
-    let mut groups: BTreeMap<&str, Vec<u8>> = BTreeMap::new();
+    // Group by type_token, collecting (channel, variant) pairs.
+    let mut groups: BTreeMap<&str, BTreeMap<u8, String>> = BTreeMap::new();
     for cs in &classified {
         if family.skip_16f && cs.type_token == "16f" {
             continue;
         }
-        groups.entry(&cs.type_token).or_default().push(cs.channels);
+        groups
+            .entry(&cs.type_token)
+            .or_default()
+            .entry(cs.channels)
+            .or_insert_with(|| cs.variant.clone());
     }
 
     let mut output = String::new();
@@ -133,21 +141,17 @@ pub fn generate_for_family(
 
     let mut macro_blocks: Vec<String> = Vec::new();
 
-    for (token, channels) in &groups {
+    for (token, ch_variants) in &groups {
         let rty = match npp_type_to_rust(token) {
             Some(t) => t,
             None => continue,
         };
 
-        // Deduplicate and sort channel counts
-        let mut chs: Vec<u8> = channels.clone();
-        chs.sort();
-        chs.dedup();
-
         let mut block = String::new();
         block.push_str(&format!("{}!({}, \"{}\", {{\n", family.rust_macro_path, rty, token));
-        for ch in &chs {
-            let sym = format!("npp_sys::nppi{}_{}_C{}R", family_name, token, ch);
+        for ch in ch_variants.keys() {
+            let variant = &ch_variants[ch];
+            let sym = format!("npp_sys::nppi{}_{}_{}", family_name, token, variant);
             block.push_str(&format!("        {} => {},\n", ch, sym));
         }
         block.push_str("});");
@@ -195,7 +199,7 @@ pub fn validate_symbols_against_bindings(
     }
 
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified = classify(&symbol_refs, family.npp_prefix, family.accepted_channels);
+    let classified = classify(&symbol_refs, family.npp_prefix, family.accepted_channels, family.custom_variants);
 
     let mut mismatches = Vec::new();
 
@@ -301,31 +305,36 @@ mod tests {
         let generated = generate_for_family(&SWAP_CHANNELS_FAMILY, &symbols);
         assert!(!generated.is_empty(), "generated output must not be empty");
 
-        // Verify it contains the expected types
+        // Verify it contains the expected types with C4C3R variant
         assert!(generated.contains("impl_swap_channels_for!(u8, \"8u\", {"));
-        assert!(generated.contains("3 => npp_sys::nppiSwapChannels_8u_C3R,"));
-        assert!(generated.contains("4 => npp_sys::nppiSwapChannels_8u_C4R,"));
+        assert!(generated.contains("4 => npp_sys::nppiSwapChannels_8u_C4C3R,"));
         assert!(generated.contains("impl_swap_channels_for!(f32, \"32f\", {"));
-        assert!(generated.contains("3 => npp_sys::nppiSwapChannels_32f_C3R,"));
+        assert!(generated.contains("4 => npp_sys::nppiSwapChannels_32f_C4C3R,"));
     }
 
     #[test]
-    fn swap_channels_rejects_unsupported_variants() {
-        // Only C3R and C4R should be classified; _Ctx, C4C3R, etc. are rejected
+    fn swap_channels_accepts_c4c3r_rejects_others() {
+        // Only C4C3R should be classified; C3R, C4R, _Ctx variants are rejected
         let fixture = fixture_path("nppiSwapChannels_symbols.txt");
         let (symbols, _) = read_fixture(&fixture);
 
         // Count classified symbols
         let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-        let classified = crate::classify::classify(&symbol_refs, "nppiSwapChannels_", &[3, 4]);
+        let classified = crate::classify::classify(&symbol_refs, "nppiSwapChannels_", &[4], &[(4, "C4C3R")]);
 
-        // Should have exactly all the listed symbols (they're all C3R or C4R)
+        // Should have exactly all the listed symbols (they're all C4C3R)
         assert_eq!(classified.len(), symbols.len(),
-            "All 10 symbols in fixture should be classified as C3R or C4R");
+            "All {} symbols in fixture should be classified as C4C3R", symbols.len());
 
-        // Verify no C4C3R made it through
-        assert!(!classified.iter().any(|c| c.raw.contains("C4C3R")),
-            "C4C3R variant must be rejected");
+        // Verify no C3R or C4R made it through
+        assert!(!classified.iter().any(|c| c.variant == "C3R"),
+            "C3R variant must be rejected");
+        assert!(!classified.iter().any(|c| c.variant == "C4R"),
+            "C4R variant must be rejected");
+
+        // Verify all are C4C3R
+        assert!(classified.iter().all(|c| c.variant == "C4C3R"),
+            "All classified must be C4C3R");
     }
 
     #[test]

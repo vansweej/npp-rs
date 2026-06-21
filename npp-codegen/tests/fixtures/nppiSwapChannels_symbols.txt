@@ -1,13 +1,8 @@
 # Captured from CUDA 12.9 via bindgen — regenerate on CUDA bump
-# SwapChannels: only C3R and C4R accepted
-# C3IR, C4IR, C4C3R, C3C4R, AC4R, and all _Ctx variants rejected
-nppiSwapChannels_16s_C3R
-nppiSwapChannels_16s_C4R
-nppiSwapChannels_16u_C3R
-nppiSwapChannels_16u_C4R
-nppiSwapChannels_32f_C3R
-nppiSwapChannels_32f_C4R
-nppiSwapChannels_32s_C3R
-nppiSwapChannels_32s_C4R
-nppiSwapChannels_8u_C3R
-nppiSwapChannels_8u_C4R
+# SwapChannels: only C4C3R (4→3 conversion) for bgra_to_rgb
+# C3R, C4R, C3IR, C4IR, C3C4R, AC4R, and all _Ctx variants rejected
+nppiSwapChannels_16s_C4C3R
+nppiSwapChannels_16u_C4C3R
+nppiSwapChannels_32f_C4C3R
+nppiSwapChannels_32s_C4C3R
+nppiSwapChannels_8u_C4C3R
