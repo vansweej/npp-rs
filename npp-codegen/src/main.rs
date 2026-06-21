@@ -1,0 +1,419 @@
+//! Binary: survey_shapes
+//!
+//! Reads NPP's bindgen output (`bindings.rs`), parses it with `syn`, and
+//! produces a shape histogram showing the distribution of NPP functions
+//! across normalized parameter-role patterns.
+
+use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+
+fn main() {
+    let bindings_path = find_bindings_rs();
+    let content = fs::read_to_string(&bindings_path)
+        .expect("Failed to read bindings.rs");
+
+    let file = syn::parse_file(&content)
+        .expect("Failed to parse bindings.rs as Rust");
+
+    let mut functions = Vec::new();
+    for item in &file.items {
+        if let syn::Item::ForeignMod(foreign_mod) = item {
+            for item in &foreign_mod.items {
+                if let syn::ForeignItem::Fn(func) = item {
+                    let ident = func.sig.ident.to_string();
+                    if ident.starts_with("nppi") {
+                        functions.push((ident, func.sig.inputs.clone()));
+                    }
+                }
+            }
+        }
+    }
+
+    // Classify functions by shape
+    let mut shape_histogram: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut families: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut ctx_count = 0;
+
+    for (full_name, params) in &functions {
+        // Strip _Ctx suffix
+        let base_name = full_name
+            .strip_suffix("_Ctx")
+            .unwrap_or(full_name)
+            .to_string();
+
+        if full_name.ends_with("_Ctx") {
+            ctx_count += 1;
+        }
+
+        // Extract family (nppi prefix up to first _\d)
+        if let Some(family) = extract_family(&base_name) {
+            families.insert(family);
+        }
+
+        // Derive shape from parameters
+        let shape = derive_shape(params);
+
+        shape_histogram
+            .entry(shape)
+            .or_insert_with(Vec::new)
+            .push(base_name);
+    }
+
+    // Deduplicate base functions (collapse _Ctx twins)
+    let mut unique_functions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (shape, funcs) in shape_histogram {
+        let mut unique = Vec::new();
+        for func in funcs {
+            if !unique.contains(&func) {
+                unique.push(func);
+            }
+        }
+        unique_functions.insert(shape, unique);
+    }
+
+    // Count distinct functions
+    let total_functions: usize = unique_functions.values().map(|v| v.len()).sum();
+
+    // Print reports
+    println!("== TOTALS ==");
+    println!("distinct functions (base, _Ctx collapsed) : {}", total_functions);
+    println!("  ...of which have a _Ctx twin            : {}", ctx_count);
+    println!("distinct families                         : {}", families.len());
+    println!("distinct shapes                           : {}", unique_functions.len());
+    println!();
+
+    // Coverage curve
+    let mut shape_counts: Vec<(usize, String)> = unique_functions
+        .iter()
+        .map(|(shape, funcs)| (funcs.len(), shape.clone()))
+        .collect();
+    shape_counts.sort_by(|a, b| b.0.cmp(&a.0));
+
+    let top_5: usize = shape_counts.iter().take(5).map(|(c, _)| c).sum();
+    let top_10: usize = shape_counts.iter().take(10).map(|(c, _)| c).sum();
+    let top_15: usize = shape_counts.iter().take(15).map(|(c, _)| c).sum();
+    let top_20: usize = shape_counts.iter().take(20).map(|(c, _)| c).sum();
+    let top_30: usize = shape_counts.iter().take(30).map(|(c, _)| c).sum();
+
+    println!("== COVERAGE CURVE ==");
+    println!(
+        "  top  5: {} / {}  ({:.1}%)",
+        top_5,
+        total_functions,
+        (top_5 as f64 / total_functions as f64) * 100.0
+    );
+    println!(
+        "  top 10: {} / {}  ({:.1}%)",
+        top_10,
+        total_functions,
+        (top_10 as f64 / total_functions as f64) * 100.0
+    );
+    println!(
+        "  top 15: {} / {}  ({:.1}%)",
+        top_15,
+        total_functions,
+        (top_15 as f64 / total_functions as f64) * 100.0
+    );
+    println!(
+        "  top 20: {} / {}  ({:.1}%)",
+        top_20,
+        total_functions,
+        (top_20 as f64 / total_functions as f64) * 100.0
+    );
+    println!(
+        "  top 30: {} / {}  ({:.1}%)",
+        top_30,
+        total_functions,
+        (top_30 as f64 / total_functions as f64) * 100.0
+    );
+    println!();
+
+    // Singleton tail
+    let n1 = unique_functions.values().filter(|v| v.len() == 1).count();
+    let n2 = unique_functions.values().filter(|v| v.len() == 2).count();
+    let n3 = unique_functions.values().filter(|v| v.len() == 3).count();
+
+    println!("== SINGLETON TAIL ==");
+    println!("  shapes used by exactly 1 function: {}", n1);
+    println!("  shapes used by exactly 2 functions: {}", n2);
+    println!("  shapes used by exactly 3 functions: {}", n3);
+    println!();
+
+    // Shape histogram
+    println!("== SHAPE HISTOGRAM ==");
+    for (shape, funcs) in &shape_counts {
+        println!("  {} | {} | {}", shape, funcs.len(), shape);
+    }
+    println!();
+
+    // Family→Shape table
+    println!("== FAMILY→SHAPE TABLE (families using each shape) ==");
+    let mut family_shape_map: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+    for (shape, funcs) in &unique_functions {
+        for func in funcs {
+            if let Some(family) = extract_family(func) {
+                *family_shape_map
+                    .entry(shape.clone())
+                    .or_insert_with(BTreeMap::new)
+                    .entry(family)
+                    .or_insert(0) += 1;
+            }
+        }
+    }
+
+    for (shape, families_map) in &family_shape_map {
+        println!("  {}:", shape);
+        for (family, count) in families_map {
+            println!("    - {} ({})", family, count);
+        }
+    }
+    println!();
+
+    // Resize sanity check
+    println!("== RESIZE SANITY CHECK ==");
+    let resize_shape = find_function_shape(&unique_functions, "nppiResize_8u_C1R");
+    if let Some(shape) = resize_shape {
+        println!("  nppiResize_8u_C1R -> {}", shape);
+        let expected = "SRC+STEP, SIZE, RECT, DST+STEP, SIZE, RECT, INTERP";
+        if shape == expected {
+            println!("  OK[!]");
+        } else {
+            println!("  MISMATCH[!]");
+            eprintln!("Expected: {}", expected);
+            eprintln!("Got: {}", shape);
+            std::process::exit(1);
+        }
+    } else {
+        println!("  nppiResize_8u_C1R not found");
+        std::process::exit(1);
+    }
+}
+
+/// Find bindings.rs path
+fn find_bindings_rs() -> PathBuf {
+    if let Ok(path) = env::var("BINDINGS_RS") {
+        return PathBuf::from(path);
+    }
+
+    if let Ok(first_arg) = env::args().nth(1).ok_or(()) {
+        return PathBuf::from(first_arg);
+    }
+
+    // Try to find it via cargo
+    let output = Command::new("find")
+        .args(&["target", "-name", "bindings.rs", "-path", "*/npp-sys/*"])
+        .output()
+        .expect("Failed to run find");
+
+    if output.status.success() {
+        let path_str = String::from_utf8(output.stdout)
+            .expect("Invalid UTF-8 in find output");
+        let trimmed = path_str.lines().next().expect("No bindings.rs found");
+        return PathBuf::from(trimmed);
+    }
+
+    eprintln!("Error: Could not find bindings.rs");
+    eprintln!("Run `cargo build -p npp-sys` first, or pass `BINDINGS_RS=/path/to/bindings.rs`");
+    std::process::exit(1);
+}
+
+/// Extract family from function name (e.g., "nppiResize" from "nppiResize_8u_C1R")
+fn extract_family(name: &str) -> Option<String> {
+    if !name.starts_with("nppi") {
+        return None;
+    }
+    // Match nppi[A-Za-z]+?_\d
+    let mut family = String::from("nppi");
+    let rest = &name[4..];
+    for ch in rest.chars() {
+        if ch.is_ascii_digit() {
+            break;
+        }
+        family.push(ch);
+    }
+    if family.len() > 4 {
+        Some(family)
+    } else {
+        None
+    }
+}
+
+/// Derive shape from function parameters
+fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>) -> String {
+    let mut classified = Vec::new();
+
+    for param in params {
+        if let syn::FnArg::Typed(pat_type) = param {
+            let param_name = extract_param_name(&pat_type.pat);
+            let role = classify_param(&pat_type.ty, &pat_type.pat);
+            if !role.is_empty() && role != "SKIP" {
+                classified.push((param_name, role));
+            }
+        }
+    }
+
+    // Merge adjacent parameters based on naming patterns
+    let mut merged = Vec::new();
+    let mut i = 0;
+    while i < classified.len() {
+        let (name, role) = &classified[i];
+
+        // Check for SRC+STEP pattern: pSrc/pSource followed by nSrcStep/nSourceStep
+        if (name.starts_with("pSrc") || name.starts_with("pSource")) && role.contains("ptr") {
+            if i + 1 < classified.len() {
+                let (next_name, next_role) = &classified[i + 1];
+                if (next_name.contains("SrcStep") || next_name.contains("SourceStep"))
+                    && next_role.contains("i32")
+                {
+                    merged.push("SRC+STEP".to_string());
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Check for DST+STEP pattern: pDst followed by nDstStep
+        if (name.starts_with("pDst") || name.starts_with("pDestination")) && role.contains("ptr") {
+            if i + 1 < classified.len() {
+                let (next_name, next_role) = &classified[i + 1];
+                if (next_name.contains("DstStep") || next_name.contains("DestinationStep"))
+                    && next_role.contains("i32")
+                {
+                    merged.push("DST+STEP".to_string());
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // Otherwise, just add the role as-is
+        merged.push(role.clone());
+        i += 1;
+    }
+
+    merged.join(", ")
+}
+
+/// Classify a single parameter
+fn classify_param(ty: &syn::Type, pat: &syn::Pat) -> String {
+    let param_name = extract_param_name(pat);
+
+    match ty {
+        syn::Type::Ptr(ptr) => {
+            let is_mut = ptr.mutability.is_some();
+            let inner_ty = &ptr.elem;
+
+            // Check for pointer types
+            if let syn::Type::Path(type_path) = &**inner_ty {
+                let type_name = type_path
+                    .path
+                    .segments
+                    .last()
+                    .map(|s| s.ident.to_string())
+                    .unwrap_or_default();
+
+                match type_name.as_str() {
+                    // Pixel data pointers
+                    "Npp8u" | "Npp8s" | "Npp16u" | "Npp16s" | "Npp32u" | "Npp32s" | "Npp32f" | "Npp64f" => {
+                        if is_mut {
+                            "ptr:dst".to_string()
+                        } else {
+                            "ptr:src".to_string()
+                        }
+                    }
+                    // Step parameters (int pointers)
+                    "c_int" | "i32" => {
+                        if param_name.contains("Step") || param_name.contains("step") {
+                            "i32:step".to_string()
+                        } else if param_name.contains("Divisor")
+                            || param_name.contains("Value")
+                            || param_name.contains("Constant")
+                            || param_name.contains("ScaleFactor")
+                        {
+                            "CONST_SCALAR".to_string()
+                        } else {
+                            "MISC:i32".to_string()
+                        }
+                    }
+                    // Buffer pointers
+                    "c_uint" | "u32" | "u8" => {
+                        if param_name.contains("Buffer") || param_name.contains("buffer") {
+                            "SCRATCH_BUF".to_string()
+                        } else if param_name.contains("Divisor")
+                            || param_name.contains("Value")
+                            || param_name.contains("Constant")
+                            || param_name.contains("ScaleFactor")
+                        {
+                            "CONST_SCALAR".to_string()
+                        } else {
+                            "MISC:ptr".to_string()
+                        }
+                    }
+                    _ => "MISC:ptr".to_string(),
+                }
+            } else {
+                "MISC:ptr".to_string()
+            }
+        }
+        syn::Type::Path(type_path) => {
+            let type_name = type_path
+                .path
+                .segments
+                .last()
+                .map(|s| s.ident.to_string())
+                .unwrap_or_default();
+
+            match type_name.as_str() {
+                "NppiSize" => "SIZE".to_string(),
+                "NppiRect" => "RECT".to_string(),
+                "NppiPoint" => {
+                    if param_name.contains("anchor") {
+                        "ANCHOR".to_string()
+                    } else {
+                        "POINT".to_string()
+                    }
+                }
+                "NppStreamContext" => "SKIP".to_string(),
+                "c_int" | "i32" => {
+                    if param_name.contains("Interpolation") {
+                        "INTERP".to_string()
+                    } else if param_name.contains("Divisor")
+                        || param_name.contains("Value")
+                        || param_name.contains("Constant")
+                        || param_name.contains("ScaleFactor")
+                    {
+                        "CONST_SCALAR".to_string()
+                    } else {
+                        "MISC:i32".to_string()
+                    }
+                }
+                _ => format!("MISC:{}", type_name),
+            }
+        }
+        _ => "MISC:other".to_string(),
+    }
+}
+
+/// Extract parameter name from pattern
+fn extract_param_name(pat: &syn::Pat) -> String {
+    match pat {
+        syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// Find the shape for a specific function
+fn find_function_shape(
+    histogram: &BTreeMap<String, Vec<String>>,
+    target: &str,
+) -> Option<String> {
+    for (shape, funcs) in histogram {
+        if funcs.iter().any(|f| f == target) {
+            return Some(shape.clone());
+        }
+    }
+    None
+}

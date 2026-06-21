@@ -1,0 +1,15 @@
+[package]
+name = "npp-codegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits", "visit"] }
+quote = "1"
+proc-macro2 = "1"
+
+# The tool reads bindings.rs as text; it does NOT depend on npp-sys or npp-rs.
+
+[[bin]]
+name = "survey_shapes"
+path = "src/main.rs"
