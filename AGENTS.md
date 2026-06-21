@@ -39,6 +39,7 @@ nix develop . --command cargo test --features gpu   # device tests, needs a real
 nix develop . --command cargo clippy -- -D warnings
 nix develop . --command cargo fmt --check
 nix develop . --command cargo doc --no-deps -p npp-rs -p npp-sys
+nix develop . --command cargo tarpaulin    # coverage, non-GPU only, must be ≥ 90 %
 ```
 
 - `Cargo.lock` is gitignored (workspace has no committed lockfile).
@@ -71,5 +72,8 @@ assert only geometry/dimensions.
   errors** (finding C1/NEW-01). No `unwrap()`/`expect()` in non-test code.
 - Document the CUDA-context-lifetime invariant at every relevant `pub` item: the
   device handle must outlive all buffers created from it (finding C7).
+- Coverage: GPU/CUDA/FFI functions are excluded from `cargo tarpaulin` with
+  `#[cfg(not(tarpaulin_include))]`. When adding new GPU-only code in a file
+  that also contains pure-logic code, add this annotation to the function.
 - Run inside the Nix dev shell whenever `flake.nix` is present (see
   `~/.config/opencode/AGENTS.md`).
