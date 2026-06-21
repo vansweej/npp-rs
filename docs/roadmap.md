@@ -83,19 +83,61 @@ The codegen uses two independent pipelines for the two axes of capability:
 
 ---
 
-## F2 — Expand `NppPixelType` operation coverage to the rest of the alphabet
+## F2 — Expand `NppPixelType` operation coverage to the rest of the alphabet *(complete)*
 
-**What:** Once F1's macro works, fill in `Resize`, `SwapChannels`, and other
-capability traits for `16u/16s/16f/32u/32s/32f/64f/8s` wherever NPP provides
+**What:** Once F1's macro works, fill in `Resize`, `SwapChannels`, and `Mean`
+capability traits for the full `NppPixelType` alphabet wherever NPP provides
 the symbol.
 
 **Why:** M1 ships the *alphabet* (all types constructible) but only `u8`/`f32`
-*ops*. This closes the gap — driven by the macro, so it should be largely
-mechanical table-entry work once F1 is solid.
+*ops*. F2 closes this gap — driven by the macro codegen crate (`npp-codegen`).
 
-**Note:** Partly fused with F1 in practice (the macro and coverage grow
-together), but worth tracking separately because "macro works for 2 types" and
-"macro covers all real NPP cells" are different definitions of done.
+**Architecture — dedicated `npp-codegen` crate:**
+
+The F1 suffix classifier was split out into a standalone `npp-codegen/` crate
+with three core modules (`classify`, `shape`, `gen_impls`) and a `survey_shapes`
+binary. The classifier was generalized with two key additions needed for the
+SwapChannels and Mean families:
+
+| Addition | Purpose | Used by |
+|----------|---------|---------|
+| `custom_variants` | Accept non‑standard channel suffixes (e.g. `C4C3R`) | SwapChannels |
+| `get_buffer_host_size_prefix` | Emit `(mean_sym, buffer_sym)` tuples for two‑call scratch‑buffer ops | Mean |
+
+See `docs/codegen-architecture.md` for full details on `FamilyDescriptor` and
+the generation flow.
+
+**Phases (implemented on `feat/f2-codegen-phase1`):**
+
+| Phase | What | Commit |
+|-------|------|--------|
+| 1 | npp-codegen crate + shape survey | `710df45` |
+| 2 | Generalized classifier + generator, delete `suffix_classifier.rs` from npp-rs | `cf3eced` |
+| 3 | Golden‑test helper (`test_helpers::assert_golden`) | `434b6af` |
+| 4 | SwapChannels macro generation (C4C3R 4→3 conversion) | `cb49c21` |
+| 5 | Mean reduction (two‑call scratch‑buffer dance) | `5763e4f` |
+| 6 | Documentation reconciliation | (this commit) |
+
+**Committed artifacts added by F2:**
+- `npp-codegen/` — entire crate (classify, shape, gen_impls, survey_shapes binary)
+- `npp-codegen/tests/fixtures/nppiSwapChannels_symbols.txt` — C4C3R fixture
+- `npp-codegen/tests/fixtures/nppiMean_symbols.txt` — C1/C3/C4 fixture
+- `npp-codegen/examples/gen_swap_channels_impls.rs`
+- `npp-codegen/examples/gen_mean_impls.rs`
+- `npp/src/swap_channels_macros.rs`
+- `npp/src/swap_channels_generated.rs`
+- `npp/src/mean_macros.rs`
+- `npp/src/mean_generated.rs`
+- `npp/tests/golden_swap_channels.rs`
+- `npp/tests/golden_mean.rs`
+
+**Deleted:** `npp/src/suffix_classifier.rs`, `npp/src/swap_channel_ops.rs`
+
+**Open items (deferred):**
+- The `Resize` family still uses `16f`-skip and has no golden test for non‑u8 types.
+- `Mean` golden test is unpinned (needs a GPU run to capture golden bytes).
+- `32u`, `64f`, `8s` have no `nppiMean_*` symbols with standard channel variants.
+- `npp-codegen` does not handle the `Mean_StdDev` or other compound op families yet.
 
 **Dependencies:** F1.
 
