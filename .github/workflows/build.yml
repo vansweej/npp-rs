@@ -37,3 +37,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
       - run: nix develop . --impure --command cargo test --no-default-features
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+      - run: nix develop . --impure --command cargo tarpaulin --engine ptrace --out Xml --fail-under 90
