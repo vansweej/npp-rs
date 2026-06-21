@@ -73,6 +73,9 @@
             stdenv.cc.cc.lib
 
             pkg-config
+
+            # Coverage tool
+            cargo-tarpaulin
           ];
 
           shellHook = ''
@@ -110,9 +113,12 @@
               fi
             done
 
-            # Embed .nvidia-libs as rpath so compiled binaries resolve the
-            # real NVIDIA driver libs at runtime.
-            export RUSTFLAGS="-C link-arg=-Wl,-rpath,$PWD/.nvidia-libs -C link-arg=-Wl,-rpath,${pkgs.glibc}/lib -L /usr/lib/x86_64-linux-gnu -L ${cudaPackages.cuda_cudart}/lib/stubs -L ${cudaPackages.cuda_nvrtc}/lib $RUSTFLAGS"
+            # Use RUSTFLAGS and LIBRARY_PATH for linker and library search paths.
+            # RUSTFLAGS: single-token flags (safe for tarpaulin's direct rustc probe).
+            # LIBRARY_PATH: search paths as env var (not subject to tarpaulin's
+            # argument-parsing bug with space-separated -L flags).
+            export RUSTFLAGS="-C link-arg=-Wl,-rpath,$PWD/.nvidia-libs -C link-arg=-Wl,-rpath,${pkgs.glibc}/lib $RUSTFLAGS"
+            export LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:${cudaPackages.cuda_cudart}/lib/stubs:${cudaPackages.cuda_nvrtc}/lib:$LIBRARY_PATH"
           '';
         };
       }
