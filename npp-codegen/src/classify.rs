@@ -41,8 +41,7 @@ pub fn classify(
 
     // Build a set of channels that have a custom variant — standard variants for
     // those channels are suppressed.
-    let custom_chs: HashSet<u8> =
-        custom_variants.iter().map(|(ch, _)| *ch).collect();
+    let custom_chs: HashSet<u8> = custom_variants.iter().map(|(ch, _)| *ch).collect();
 
     symbols
         .iter()
@@ -271,10 +270,16 @@ mod tests {
             .collect();
         assert!(!symbols.is_empty(), "fixture must not be empty");
         let result = classify_swap_channels(&symbols);
-        assert!(!result.is_empty(), "classify must produce at least one result");
+        assert!(
+            !result.is_empty(),
+            "classify must produce at least one result"
+        );
         for cs in &result {
             assert_eq!(cs.channels, 4, "all SwapChannels must map to channels=4");
-            assert_eq!(cs.variant, "C4C3R", "all SwapChannels must have variant C4C3R");
+            assert_eq!(
+                cs.variant, "C4C3R",
+                "all SwapChannels must have variant C4C3R"
+            );
         }
     }
 

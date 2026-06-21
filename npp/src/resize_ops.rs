@@ -30,15 +30,12 @@ mod tests {
     /// This tests the guard logic path without needing a GPU.
     #[test]
     fn test_mode_unsupported_returns_false() {
-        assert_eq!(mode_supported("zzz", ResizeInterpolation::Super), false);
+        assert!(!mode_supported("zzz", ResizeInterpolation::Super));
     }
 
     /// Known-supported pair from the probed table should return true.
     #[test]
     fn test_mode_supported_returns_true() {
-        assert_eq!(
-            mode_supported("8u", ResizeInterpolation::NearestNeighbor),
-            true
-        );
+        assert!(mode_supported("8u", ResizeInterpolation::NearestNeighbor));
     }
 }

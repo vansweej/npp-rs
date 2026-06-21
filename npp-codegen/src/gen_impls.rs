@@ -121,12 +121,14 @@ pub fn read_fixture(path: &Path) -> (Vec<String>, String) {
 /// Generate `impl_*_for!` invocations for a family from raw symbol strings.
 ///
 /// Returns the generated Rust source as a string.
-pub fn generate_for_family(
-    family: &FamilyDescriptor,
-    symbols: &[String],
-) -> String {
+pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> String {
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified = classify(&symbol_refs, family.npp_prefix, family.accepted_channels, family.custom_variants);
+    let classified = classify(
+        &symbol_refs,
+        family.npp_prefix,
+        family.accepted_channels,
+        family.custom_variants,
+    );
 
     // Group by type_token, collecting (channel, variant) pairs.
     let mut groups: BTreeMap<&str, BTreeMap<u8, String>> = BTreeMap::new();
@@ -173,7 +175,10 @@ pub fn generate_for_family(
         };
 
         let mut block = String::new();
-        block.push_str(&format!("{}!({}, \"{}\", {{\n", family.rust_macro_path, rty, token));
+        block.push_str(&format!(
+            "{}!({}, \"{}\", {{\n",
+            family.rust_macro_path, rty, token
+        ));
         for ch in ch_variants.keys() {
             let variant = &ch_variants[ch];
             let sym = format!("npp_sys::nppi{}_{}_{}", family_name, token, variant);
@@ -215,13 +220,14 @@ pub fn validate_symbols_against_bindings(
     symbols: &[String],
     bindings_rs_path: &Path,
 ) -> Vec<String> {
-    let content = fs::read_to_string(bindings_rs_path)
-        .expect("failed to read bindings.rs");
-    let file = syn::parse_file(&content)
-        .expect("failed to parse bindings.rs");
+    let content = fs::read_to_string(bindings_rs_path).expect("failed to read bindings.rs");
+    let file = syn::parse_file(&content).expect("failed to parse bindings.rs");
 
     // Build a map of function name -> params
-    let mut func_map: std::collections::HashMap<String, syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>> = std::collections::HashMap::new();
+    let mut func_map: std::collections::HashMap<
+        String,
+        syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    > = std::collections::HashMap::new();
     for item in &file.items {
         if let syn::Item::ForeignMod(foreign_mod) = item {
             for item in &foreign_mod.items {
@@ -234,17 +240,21 @@ pub fn validate_symbols_against_bindings(
     }
 
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified = classify(&symbol_refs, family.npp_prefix, family.accepted_channels, family.custom_variants);
+    let classified = classify(
+        &symbol_refs,
+        family.npp_prefix,
+        family.accepted_channels,
+        family.custom_variants,
+    );
 
     let mut mismatches = Vec::new();
 
     for cs in &classified {
         // Find the non-Ctx version first, then try _Ctx
-        let func_params = func_map.get(&cs.raw)
-            .or_else(|| {
-                let ctx_name = format!("{}_Ctx", cs.raw);
-                func_map.get(&ctx_name)
-            });
+        let func_params = func_map.get(&cs.raw).or_else(|| {
+            let ctx_name = format!("{}_Ctx", cs.raw);
+            func_map.get(&ctx_name)
+        });
 
         if let Some(params) = func_params {
             let actual_shape = crate::shape::derive_shape(params);
@@ -255,10 +265,7 @@ pub fn validate_symbols_against_bindings(
                 ));
             }
         } else {
-            mismatches.push(format!(
-                "{}: function not found in bindings.rs",
-                cs.raw
-            ));
+            mismatches.push(format!("{}: function not found in bindings.rs", cs.raw));
         }
     }
 
@@ -316,7 +323,11 @@ mod tests {
 
         // Show diff if not identical
         if committed != generated {
-            eprintln!("Committed length: {}, Generated length: {}", committed.len(), generated.len());
+            eprintln!(
+                "Committed length: {}, Generated length: {}",
+                committed.len(),
+                generated.len()
+            );
             for (i, (cl, gl)) in committed.lines().zip(generated.lines()).enumerate() {
                 if cl != gl {
                     eprintln!("First difference at line {}:", i + 1);
@@ -327,7 +338,10 @@ mod tests {
             }
         }
 
-        assert_eq!(committed, generated, "resize_generated.rs must be byte-identical");
+        assert_eq!(
+            committed, generated,
+            "resize_generated.rs must be byte-identical"
+        );
     }
 
     #[test]
@@ -335,7 +349,10 @@ mod tests {
         // Verify SwapChannels fixture can be read and generates valid output
         let fixture = fixture_path("nppiSwapChannels_symbols.txt");
         let (symbols, _) = read_fixture(&fixture);
-        assert!(!symbols.is_empty(), "SwapChannels fixture must not be empty");
+        assert!(
+            !symbols.is_empty(),
+            "SwapChannels fixture must not be empty"
+        );
 
         let generated = generate_for_family(&SWAP_CHANNELS_FAMILY, &symbols);
         assert!(!generated.is_empty(), "generated output must not be empty");
@@ -355,21 +372,32 @@ mod tests {
 
         // Count classified symbols
         let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-        let classified = crate::classify::classify(&symbol_refs, "nppiSwapChannels_", &[4], &[(4, "C4C3R")]);
+        let classified =
+            crate::classify::classify(&symbol_refs, "nppiSwapChannels_", &[4], &[(4, "C4C3R")]);
 
         // Should have exactly all the listed symbols (they're all C4C3R)
-        assert_eq!(classified.len(), symbols.len(),
-            "All {} symbols in fixture should be classified as C4C3R", symbols.len());
+        assert_eq!(
+            classified.len(),
+            symbols.len(),
+            "All {} symbols in fixture should be classified as C4C3R",
+            symbols.len()
+        );
 
         // Verify no C3R or C4R made it through
-        assert!(!classified.iter().any(|c| c.variant == "C3R"),
-            "C3R variant must be rejected");
-        assert!(!classified.iter().any(|c| c.variant == "C4R"),
-            "C4R variant must be rejected");
+        assert!(
+            !classified.iter().any(|c| c.variant == "C3R"),
+            "C3R variant must be rejected"
+        );
+        assert!(
+            !classified.iter().any(|c| c.variant == "C4R"),
+            "C4R variant must be rejected"
+        );
 
         // Verify all are C4C3R
-        assert!(classified.iter().all(|c| c.variant == "C4C3R"),
-            "All classified must be C4C3R");
+        assert!(
+            classified.iter().all(|c| c.variant == "C4C3R"),
+            "All classified must be C4C3R"
+        );
     }
 
     #[test]
@@ -380,17 +408,18 @@ mod tests {
             let fixture = fixture_path("nppiResize_symbols.txt");
             let (symbols, _) = read_fixture(&fixture);
 
-            let mismatches = validate_symbols_against_bindings(
-                &RESIZE_FAMILY, &symbols, &bindings_path
-            );
+            let mismatches =
+                validate_symbols_against_bindings(&RESIZE_FAMILY, &symbols, &bindings_path);
             if !mismatches.is_empty() {
                 for m in &mismatches {
                     eprintln!("Mismatch: {}", m);
                 }
             }
-            assert!(mismatches.is_empty(),
+            assert!(
+                mismatches.is_empty(),
                 "All Resize symbols must match expected shape; {} mismatches found",
-                mismatches.len());
+                mismatches.len()
+            );
         } else {
             eprintln!("bindings.rs not found — skipping syn shape check");
         }
@@ -404,17 +433,18 @@ mod tests {
             let fixture = fixture_path("nppiSwapChannels_symbols.txt");
             let (symbols, _) = read_fixture(&fixture);
 
-            let mismatches = validate_symbols_against_bindings(
-                &SWAP_CHANNELS_FAMILY, &symbols, &bindings_path
-            );
+            let mismatches =
+                validate_symbols_against_bindings(&SWAP_CHANNELS_FAMILY, &symbols, &bindings_path);
             if !mismatches.is_empty() {
                 for m in &mismatches {
                     eprintln!("Mismatch: {}", m);
                 }
             }
-            assert!(mismatches.is_empty(),
+            assert!(
+                mismatches.is_empty(),
                 "All SwapChannels symbols must match expected shape; {} mismatches found",
-                mismatches.len());
+                mismatches.len()
+            );
         } else {
             eprintln!("bindings.rs not found — skipping syn shape check");
         }

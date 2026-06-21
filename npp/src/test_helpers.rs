@@ -18,11 +18,7 @@
 /// Every macro-generated op family should land with ≥1 bit-exact golden test,
 /// preferring integer/nearest paths to avoid FP variance.
 #[cfg(feature = "gpu")]
-pub fn assert_golden<T: PartialEq + std::fmt::Debug>(
-    actual: &[T],
-    expected: &[T],
-    label: &str,
-) {
+pub fn assert_golden<T: PartialEq + std::fmt::Debug>(actual: &[T], expected: &[T], label: &str) {
     if expected.is_empty() {
         eprintln!("=== Golden reference NOT pinned for {label} ===");
         eprintln!("Captured output ({} bytes): {:?}", actual.len(), actual);

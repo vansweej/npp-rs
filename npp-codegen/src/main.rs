@@ -14,11 +14,9 @@ use std::process::Command;
 
 fn main() {
     let bindings_path = find_bindings_rs();
-    let content = fs::read_to_string(&bindings_path)
-        .expect("Failed to read bindings.rs");
+    let content = fs::read_to_string(&bindings_path).expect("Failed to read bindings.rs");
 
-    let file = syn::parse_file(&content)
-        .expect("Failed to parse bindings.rs as Rust");
+    let file = syn::parse_file(&content).expect("Failed to parse bindings.rs as Rust");
 
     let mut functions = Vec::new();
     for item in &file.items {
@@ -58,10 +56,7 @@ fn main() {
         // Derive shape from parameters (using library module)
         let shape = derive_shape(params);
 
-        shape_histogram
-            .entry(shape)
-            .or_default()
-            .push(base_name);
+        shape_histogram.entry(shape).or_default().push(base_name);
     }
 
     // Deduplicate base functions (collapse _Ctx twins)
@@ -81,10 +76,19 @@ fn main() {
 
     // Print reports
     println!("== TOTALS ==");
-    println!("distinct functions (base, _Ctx collapsed) : {}", total_functions);
+    println!(
+        "distinct functions (base, _Ctx collapsed) : {}",
+        total_functions
+    );
     println!("  ...of which have a _Ctx twin            : {}", ctx_count);
-    println!("distinct families                         : {}", families.len());
-    println!("distinct shapes                           : {}", unique_functions.len());
+    println!(
+        "distinct families                         : {}",
+        families.len()
+    );
+    println!(
+        "distinct shapes                           : {}",
+        unique_functions.len()
+    );
     println!();
 
     // Coverage curve
@@ -211,8 +215,7 @@ fn find_bindings_rs() -> PathBuf {
         .expect("Failed to run find");
 
     if output.status.success() {
-        let path_str = String::from_utf8(output.stdout)
-            .expect("Invalid UTF-8 in find output");
+        let path_str = String::from_utf8(output.stdout).expect("Invalid UTF-8 in find output");
         let trimmed = path_str.lines().next().expect("No bindings.rs found");
         return PathBuf::from(trimmed);
     }
@@ -244,10 +247,7 @@ fn extract_family(name: &str) -> Option<String> {
 }
 
 /// Find the shape for a specific function
-fn find_function_shape(
-    histogram: &BTreeMap<String, Vec<String>>,
-    target: &str,
-) -> Option<String> {
+fn find_function_shape(histogram: &BTreeMap<String, Vec<String>>, target: &str) -> Option<String> {
     for (shape, funcs) in histogram {
         if funcs.iter().any(|f| f == target) {
             return Some(shape.clone());

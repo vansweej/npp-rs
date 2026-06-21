@@ -27,7 +27,8 @@ pub fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token:
         let (name, role) = &classified[i];
 
         // Check for SRC+STEP pattern: pSrc/pSource followed by nSrcStep/nSourceStep
-        if (name.starts_with("pSrc") || name.starts_with("pSource")) && role.contains("ptr")
+        if (name.starts_with("pSrc") || name.starts_with("pSource"))
+            && role.contains("ptr")
             && i + 1 < classified.len()
         {
             let (next_name, next_role) = &classified[i + 1];
@@ -41,7 +42,8 @@ pub fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token:
         }
 
         // Check for DST+STEP pattern: pDst followed by nDstStep
-        if (name.starts_with("pDst") || name.starts_with("pDestination")) && role.contains("ptr")
+        if (name.starts_with("pDst") || name.starts_with("pDestination"))
+            && role.contains("ptr")
             && i + 1 < classified.len()
         {
             let (next_name, next_role) = &classified[i + 1];
@@ -78,7 +80,9 @@ pub fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token:
         }
 
         // Check for CHANNEL_ORDER: const int[] named aDstOrder / aOrder / aConstants
-        if (name.starts_with("aDstOrder") || name.starts_with("aOrder") || name.starts_with("aConstants"))
+        if (name.starts_with("aDstOrder")
+            || name.starts_with("aOrder")
+            || name.starts_with("aConstants"))
             && role.contains("ptr")
         {
             merged.push("CHANNEL_ORDER".to_string());
@@ -87,7 +91,9 @@ pub fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token:
         }
 
         // Check for CONST_ARRAY: const int[]
-        if (name.starts_with("aDstOrder") || name.starts_with("aOrder") || name.starts_with("aConstants"))
+        if (name.starts_with("aDstOrder")
+            || name.starts_with("aOrder")
+            || name.starts_with("aConstants"))
             && role == "MISC:i32"
         {
             merged.push("CHANNEL_ORDER".to_string());
@@ -96,8 +102,11 @@ pub fn derive_shape(params: &syn::punctuated::Punctuated<syn::FnArg, syn::token:
         }
 
         // Check for OUT_SCALAR: pointer to pMean/pMin/pMax/pSum/pStdDev
-        if (name.contains("pMean") || name.contains("pMin") || name.contains("pMax")
-            || name.contains("pSum") || name.contains("pStdDev"))
+        if (name.contains("pMean")
+            || name.contains("pMin")
+            || name.contains("pMax")
+            || name.contains("pSum")
+            || name.contains("pStdDev"))
             && role.contains("ptr")
         {
             merged.push("OUT_SCALAR".to_string());
@@ -142,9 +151,8 @@ fn classify_param(ty: &syn::Type, pat: &syn::Pat) -> String {
 
                 match type_name.as_str() {
                     // Pixel data pointers
-                    "Npp8u" | "Npp8s" | "Npp16u" | "Npp16s" | "Npp32u" | "Npp32s" | "Npp32f" | "Npp64f" => {
-                        "ptr:pixel".to_string()
-                    }
+                    "Npp8u" | "Npp8s" | "Npp16u" | "Npp16s" | "Npp32u" | "Npp32s" | "Npp32f"
+                    | "Npp64f" => "ptr:pixel".to_string(),
                     // Step parameters (int pointers)
                     "c_int" | "i32" => {
                         if param_name.contains("Step") || param_name.contains("step") {
@@ -207,7 +215,8 @@ fn classify_param(ty: &syn::Type, pat: &syn::Pat) -> String {
                         || param_name.contains("ScaleFactor")
                     {
                         "CONST_SCALAR".to_string()
-                    } else if param_name.contains("BufferSize") || param_name.contains("bufferSize")
+                    } else if param_name.contains("BufferSize")
+                        || param_name.contains("bufferSize")
                         || param_name.contains("nBufferSize")
                     {
                         "SCRATCH_BUF".to_string()
