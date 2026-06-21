@@ -19,6 +19,7 @@ use cudarc::driver::CudaDevice;
 use npp_rs::cuda::default_cuda_device;
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{Resize, ResizeInterpolation};
+use npp_rs::test_helpers::assert_golden;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -62,12 +63,5 @@ fn test_golden_resize_u8_nn() {
 
     let output: Vec<u8> = Vec::try_from(&dst).expect("read-back");
 
-    if EXPECTED.len() != (DST_W * DST_H * 3) as usize || EXPECTED.iter().all(|&b| b == 0) {
-        // Golden reference not yet pinned
-        eprintln!("=== Golden reference NOT pinned ===");
-        eprintln!("Captured output ({} bytes): {:?}", output.len(), output);
-        panic!("golden reference not yet pinned — commit the captured bytes");
-    }
-
-    assert_eq!(output, EXPECTED, "pixel mismatch in NearestNeighbor resize");
+    assert_golden(&output, EXPECTED, "NearestNeighbor resize");
 }

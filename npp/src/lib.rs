@@ -45,6 +45,9 @@ pub mod resize_macros;
 pub mod resize_ops;
 /// `SwapChannels` implementation for `u8`.
 pub mod swap_channel_ops;
+/// Golden-test assertion helper (GPU-gated).
+#[cfg(feature = "gpu")]
+pub mod test_helpers;
 
 #[cfg(test)]
 mod raw_tests;
