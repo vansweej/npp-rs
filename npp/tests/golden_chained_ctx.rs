@@ -67,6 +67,6 @@ fn chained_bgr_to_rgb_then_resize_produces_correct_pixels() {
     // ── Golden ──
     // EXPECTED must be pinned by running once and copying the printed output.
     // 2x2 RGB = 4 pixels × 3 channels = 12 bytes.
-    const EXPECTED: &[u8] = &[]; // EMPTY → prints output for pinning
+    const EXPECTED: &[u8] = &[0, 0, 255, 255, 0, 0, 0, 0, 255, 255, 0, 0];
     assert_golden(&result, EXPECTED, "chained_bgr_to_rgb_then_resize");
 }

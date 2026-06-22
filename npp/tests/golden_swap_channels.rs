@@ -12,13 +12,11 @@
 
 #![cfg(feature = "gpu")]
 
-use cudarc::driver::CudaDevice;
-use npp_rs::cuda::default_cuda_device;
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::SwapChannels;
+use npp_rs::stream::stream_context_for;
 use npp_rs::test_helpers::assert_golden;
 use std::convert::TryFrom;
-use std::sync::Arc;
 
 const W: u32 = 12;
 const H: u32 = 8;
@@ -63,13 +61,13 @@ const EXPECTED: &[u8] = &[
 
 #[test]
 fn test_golden_swap_channels_u8() {
-    let device: Arc<CudaDevice> = default_cuda_device().expect("CUDA device init");
+    let ctx = stream_context_for(0).expect("CUDA device init");
 
     // 4-channel source (BGRA)
-    let src = CudaImage::from_host(device.clone(), 4, W, H, &make_input()).expect("src allocation");
+    let src = CudaImage::from_host(ctx.clone(), 4, W, H, &make_input()).expect("src allocation");
 
     // 3-channel destination (RGB)
-    let mut dst = CudaImage::<u8>::new(device.clone(), 3, W, H).expect("dst allocation");
+    let mut dst = CudaImage::<u8>::new(ctx.clone(), 3, W, H).expect("dst allocation");
 
     src.bgra_to_rgb(&mut dst).expect("bgra_to_rgb");
 

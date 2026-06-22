@@ -15,13 +15,11 @@
 
 #![cfg(feature = "gpu")]
 
-use cudarc::driver::CudaDevice;
-use npp_rs::cuda::default_cuda_device;
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{Resize, ResizeInterpolation};
+use npp_rs::stream::stream_context_for;
 use npp_rs::test_helpers::assert_golden;
 use std::convert::TryFrom;
-use std::sync::Arc;
 
 const SRC_W: u32 = 12;
 const SRC_H: u32 = 8;
@@ -52,11 +50,11 @@ const EXPECTED: &[u8] = &[
 
 #[test]
 fn test_golden_resize_u8_nn() {
-    let device: Arc<CudaDevice> = default_cuda_device().expect("CUDA device init");
-    let src = CudaImage::from_host(device.clone(), 3, SRC_W, SRC_H, &make_input())
-        .expect("src allocation");
+    let ctx = stream_context_for(0).expect("CUDA device init");
+    let src =
+        CudaImage::from_host(ctx.clone(), 3, SRC_W, SRC_H, &make_input()).expect("src allocation");
 
-    let mut dst = CudaImage::<u8>::new(device.clone(), 3, DST_W, DST_H).expect("dst allocation");
+    let mut dst = CudaImage::<u8>::new(ctx.clone(), 3, DST_W, DST_H).expect("dst allocation");
 
     src.resize(&mut dst, ResizeInterpolation::NearestNeighbor)
         .expect("resize");

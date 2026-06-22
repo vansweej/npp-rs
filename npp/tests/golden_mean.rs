@@ -12,11 +12,9 @@
 
 #![cfg(feature = "gpu")]
 
-use cudarc::driver::CudaDevice;
-use npp_rs::cuda::default_cuda_device;
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::Mean;
-use std::sync::Arc;
+use npp_rs::stream::stream_context_for;
 
 const W: u32 = 12;
 const H: u32 = 4;
@@ -44,10 +42,10 @@ const EPSILON: f64 = 1e-12;
 
 #[test]
 fn test_golden_mean_u8_c3() {
-    let device: Arc<CudaDevice> = default_cuda_device().expect("CUDA device init");
+    let ctx = stream_context_for(0).expect("CUDA device init");
 
     // 3-channel source (RGB)
-    let src = CudaImage::from_host(device.clone(), 3, W, H, &make_input()).expect("src allocation");
+    let src = CudaImage::from_host(ctx.clone(), 3, W, H, &make_input()).expect("src allocation");
 
     let result = src.mean().expect("mean");
 
