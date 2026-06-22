@@ -7,10 +7,11 @@ Linux + NVIDIA GPU only.
 
 Milestone 1 is **complete** — the repo has been ported to cudarc 0.9, ships a
 reproducible Nix dev shell, uses shared NPP linking, has bindgen `nppi*` FFI,
-and GPU-gated tests. The forward source of truth for all post-M1 work is
-`docs/roadmap.md` (features F1–F10). Its "Resolved decisions (binding)" and
-"Out of scope (M2)" sections replace the former M1 plan document as the
-authority for scope decisions.
+and GPU-gated tests. **F1 (macro codegen), F2 (alphabet coverage), and F8 core
+(StreamContext / `_Ctx` pivot) are merged on `main`.** The forward source of truth
+for all post-M1 work is `docs/roadmap.md` (features F1–F10). Its "Resolved decisions
+(binding)" and "Out of scope (M2)" sections replace the former M1 plan document as
+the authority for scope decisions.
 
 - `reviews/final-report.md` — **mandatory full read before any soundness work.**
   The plan cites findings by ID (C1, C2, CT1, …); the evidence and the Round-2

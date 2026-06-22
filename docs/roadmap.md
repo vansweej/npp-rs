@@ -31,7 +31,7 @@ so they must live in the roadmap before the M1 plan document is deleted.
 
 - C2 — replace `debug_assert!` with `Result`-returning validation and seal the format
 - C5 — replace `Vec::with_capacity` + `set_len` with zeroed/`MaybeUninit` + stride fix
-- C8 — stream/execution-context model (CUDA streams, async ops)
+- ~~C8 — stream/execution-context model (CUDA streams, async ops)~~ **→ Delivered by F8 (core)**
 - C11 — (if deferred by the open decision) seal/remove generic `T`
 - C12 — golden-image correctness tests
 - IPP bindings (`ipp-sys`/`ipp`)
@@ -246,27 +246,61 @@ post-M1 than pre-M1, but not gone.
 
 ---
 
-## F8 — Stream / execution-context model (C8 + C7)
+## F8 — Stream / execution-context model (C8 + C7) *(core complete)*
 
-**What:** A first-class stream/execution-context abstraction: configurable
-device selection (kill the hardcoded `Device::get_device(0)`), explicit stream
-assignment, defined synchronisation contract per operation, and compute/copy
-overlap.
+**What:** A first-class stream/execution-context abstraction: `StreamContext`
+(forked stream + populated `NppStreamContext`), the `_Ctx` pivot of Resize/SwapChannels/Mean,
+the host-fenced NULL-stream readback contract, C7 tie via the `ctx` field on
+`CudaImage`, and `!Send + !Sync` enforcement.
 
-**Why:** C8 — there is currently *zero* stream concept; correctness is an
-emergent side-effect of default-stream read-back ordering. This forecloses
-async overlap (the entire performance reason to use CUDA asynchronously) and
-creates latent races the moment two ops are chained. cudarc has the primitives
-(`fork_default_stream`, `wait_for`, `CudaStream`), so this is "design the
-abstraction over cudarc's stream API," not "build streams from scratch."
-Signature-shaping — it touches every op signature (which stream?), so it wants
-its own ADR/sparring session before it's wired in.
+**Status:** Core implementation merged on `main` (commits `a7456c7`–`f6b1d5c`).
+Committed artifacts: `npp/src/stream.rs`, `npp-sys/tests/stream_context_symbols.rs`,
+`docs/stream-context.md`. All three ops (Resize, SwapChannels, Mean) pivot to
+`_Ctx` variants via macro regeneration (commit `257bda6`). Golden tests re-pinned
+and passing.
 
-**❗ Cross-cutting flag:** F8 interacts with F1 (macro). If streams are coming
-and they change op signatures, decide F8's signature shape *before* F1's macro
-hardens — otherwise the macro gets regenerated when streams land.
+**Cross-cutting flag — RESOLVED:** F8 was flagged as interacting with F1 (macro).
+The feared risk was that F1's macro templates would ossify before F8's signature
+shape was decided, forcing a regeneration when streams landed. **This event already
+occurred and is closed:** F8 shipped *after* F1/F2 were complete, and the macros
+were regenerated onto `_Ctx` symbols in a single coordinated pass (commit `257bda6`
+"accept and prefer `_Ctx` variants"). The sequencing constraint is satisfied.
+
+**Two sub-goals deferred to F8.1 and F8.2** (see below).
 
 **Dependencies:** M1.
+
+---
+
+## F8.1 — Configurable device selection
+
+**What:** Remove the hardcoded ordinal-0 path from `cuda.rs`. The `stream_context_for(ordinal)`
+function already exists and accepts a device ordinal, but `default_cuda_device()` hardcodes
+ordinal 0. Eliminate the hardcoded path so all device selection is explicit.
+
+**Why:** F8's original scope included "configurable device selection (kill the hardcoded
+`Device::get_device(0)`)". The core stream abstraction landed, but this sub-goal was
+deferred. It is a straightforward cleanup: remove `default_cuda_device()` or make it
+a thin wrapper that requires an explicit ordinal argument.
+
+**Dependencies:** F8 (core).
+
+---
+
+## F8.2 — Compute/copy overlap / async multi-stream chaining
+
+**What:** Enable compute/copy overlap and multi-stream async chaining. The `StreamContext::device_fence()`
+method already exists (calls `cuDeviceGetAttribute` via `CudaDevice::wait_for`), providing
+device-side ordering without host blocking. This feature would extend the async contract
+to support chaining operations across multiple streams on the same device, with explicit
+device-side fences between them.
+
+**Why:** F8's original scope included "compute/copy overlap" — the entire performance reason
+to use CUDA asynchronously. The core stream abstraction (host-fenced readback, forked stream
+per context) landed, but async chaining was deferred to "Session 3 (future)" per the F8
+session briefs. This is the remaining work to unlock true async pipelines.
+
+**Dependencies:** F8 (core).
 
 ---
 
@@ -305,18 +339,22 @@ patterns being mature enough to reuse the approach.
 ```
 M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops)
      │      └─────────────────────> F6 (golden tests, grows with F1/F2)
-     ├─> F3 (image-rs boundary)           [independent of F1]
-     ├─> F4 (graphynx boundary)           [independent of F1]
+     ├─> F3 (image-rs boundary)           [independent]
+     ├─> F4 (graphynx boundary)           [independent]
      ├─> F7 (release validation)          [type seal did half in M1]
-     ├─> F8 (streams/execution context)   [decide signature shape *before* F1]
+     ├─> F8 (streams/execution context)   [DONE]
+     │      ├─> F8.1 (configurable device selection)
+     │      └─> F8.2 (async multi-stream chaining)
      └─> F9 (npps signal ops) ── after F1
                 F10 (IPP) ── furthest out, reuses the pattern
 ```
 
-The one cross-cutting dependency worth remembering: **F8 (streams) interacts
-with F1 (macro).** If streams are coming and they change op signatures, decide
-F8's signature shape *before* the F1 macro ossifies — otherwise the macro gets
-regenerated when streams land. Everything else is comfortably independent.
+**Sequencing note:** F1, F2, and F8 (core) are complete and merged on `main`.
+The cross-cutting F8↔F1 signature-shaping risk (the load-bearing constraint that
+shaped the original roadmap) is **resolved**: F8 shipped after F1/F2 with a clean
+`_Ctx` regeneration, so the feared "regenerate when streams land" event already
+occurred and is closed. All remaining features (F3, F4, F5, F6/F6.1, F7, F8.1,
+F8.2, F9, F10) are independent — the next phase is a free choice.
 
 ---
 
