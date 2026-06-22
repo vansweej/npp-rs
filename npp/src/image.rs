@@ -1,5 +1,8 @@
+#![allow(clippy::arc_with_non_send_sync)]
+
 use crate::error::NppError;
 use crate::layout::CudaLayout;
+use crate::stream::StreamContext;
 use cudarc::driver::{CudaDevice, CudaSlice, CudaView, CudaViewMut};
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -84,19 +87,20 @@ impl NppPixelType for f64 {
 ///
 /// # Device lifetime invariant (C7)
 ///
-/// The `Arc<CudaDevice>` stored in every `CudaImage` must outlive all operations
-/// on the image. Dropping the device while a `CudaImage` is live results in
-/// `cuMemFree` against a destroyed context. This is enforced for free by cudarc's
-/// internal `Arc<CudaDevice>` reference on every `CudaSlice`.
+/// The [`StreamContext`] stored in every `CudaImage` must outlive all operations
+/// on the image. The underlying [`CudaDevice`] handle is reference-counted via
+/// [`Arc`], so it stays alive as long as any `CudaImage` or `StreamContext` holds
+/// a reference.
 ///
 /// # Thread safety
 ///
-/// `CudaImage<T>` is `Send + Sync` because `CudaSlice<T>` is `Send + Sync` in
-/// cudarc 0.9. However, CUDA contexts are thread-bound; safe cross-thread usage
-/// requires explicit context management (deferred to M2 — see F8).
+/// `CudaImage<T>` is `!Send + !Sync` because [`StreamContext`] contains a
+/// `CudaStream` which is thread-bound (CUDA streams cannot safely be used
+/// from multiple threads). Images created from the same `StreamContext` share
+/// the same forked stream; cross-thread usage requires external synchronisation.
 #[derive(Debug)]
 pub struct CudaImage<T: NppPixelType> {
-    pub(crate) device: Arc<CudaDevice>,
+    pub(crate) ctx: Arc<StreamContext>,
     pub(crate) buf: CudaSlice<T>,
     pub(crate) layout: CudaLayout,
 }
@@ -106,7 +110,7 @@ impl<T: NppPixelType> CudaImage<T> {
     ///
     /// # Arguments
     ///
-    /// * `device` - The CUDA device to allocate on
+    /// * `ctx` - The stream context providing the CUDA device for allocation
     /// * `channels` - Number of channels per pixel
     /// * `width` - Image width in pixels
     /// * `height` - Image height in pixels
@@ -116,26 +120,28 @@ impl<T: NppPixelType> CudaImage<T> {
     /// Returns `NppError::Cuda` if device allocation fails.
     #[cfg(not(tarpaulin_include))]
     pub fn new(
-        device: Arc<CudaDevice>,
+        ctx: Arc<StreamContext>,
         channels: u8,
         width: u32,
         height: u32,
     ) -> Result<Self, NppError> {
         let num_elements = (width as usize) * (height as usize) * (channels as usize);
-        let buf = device.alloc_zeros::<T>(num_elements)?;
+        let buf = ctx.device().alloc_zeros::<T>(num_elements)?;
         let layout = CudaLayout::row_major_packed(channels, width, height);
-        Ok(CudaImage {
-            device,
-            buf,
-            layout,
-        })
+        Ok(CudaImage { ctx, buf, layout })
+    }
+
+    /// Reference to the underlying CUDA device (shared from the [`StreamContext`]).
+    #[cfg(not(tarpaulin_include))]
+    pub fn device(&self) -> &Arc<CudaDevice> {
+        self.ctx.device()
     }
 
     /// Create a GPU image from host data.
     ///
     /// # Arguments
     ///
-    /// * `device` - The CUDA device to allocate on
+    /// * `ctx` - The stream context providing the CUDA device for allocation
     /// * `channels` - Number of channels per pixel
     /// * `width` - Image width in pixels
     /// * `height` - Image height in pixels
@@ -147,7 +153,7 @@ impl<T: NppPixelType> CudaImage<T> {
     /// Returns `NppError::Cuda` if device allocation or copy fails.
     #[cfg(not(tarpaulin_include))]
     pub fn from_host(
-        device: Arc<CudaDevice>,
+        ctx: Arc<StreamContext>,
         channels: u8,
         width: u32,
         height: u32,
@@ -164,13 +170,9 @@ impl<T: NppPixelType> CudaImage<T> {
                 expected_len
             )));
         }
-        let buf = device.htod_sync_copy(data)?;
+        let buf = ctx.device().htod_sync_copy(data)?;
         let layout = CudaLayout::row_major_packed(channels, width, height);
-        Ok(CudaImage {
-            device,
-            buf,
-            layout,
-        })
+        Ok(CudaImage { ctx, buf, layout })
     }
 
     /// Get the image dimensions as (channels, width, height).
@@ -267,7 +269,7 @@ impl<T: NppPixelType> CudaImage<T> {
         };
 
         Ok(CudaImageView {
-            device: self.device.clone(),
+            ctx: self.ctx.clone(),
             view,
             layout,
         })
@@ -316,7 +318,7 @@ impl<T: NppPixelType> CudaImage<T> {
         };
 
         Ok(CudaImageViewMut {
-            device: self.device.clone(),
+            ctx: self.ctx.clone(),
             view,
             layout,
         })
@@ -330,7 +332,7 @@ impl<T: NppPixelType> CudaImage<T> {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct CudaImageView<'a, T: NppPixelType> {
-    pub(crate) device: Arc<CudaDevice>,
+    pub(crate) ctx: Arc<StreamContext>,
     pub(crate) view: CudaView<'a, T>,
     pub(crate) layout: CudaLayout,
 }
@@ -387,7 +389,7 @@ impl<'a, T: NppPixelType> CudaImageView<'a, T> {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct CudaImageViewMut<'a, T: NppPixelType> {
-    pub(crate) device: Arc<CudaDevice>,
+    pub(crate) ctx: Arc<StreamContext>,
     pub(crate) view: CudaViewMut<'a, T>,
     pub(crate) layout: CudaLayout,
 }
@@ -438,12 +440,31 @@ impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
 }
 
 /// Copy a GPU image to host memory.
+///
+/// # Ordering contract
+///
+/// NPP `_Ctx` operations are enqueued on the forked stream. This readback
+/// performs:
+///
+/// 1. A host-blocking [`StreamContext::synchronize()`] on the forked stream
+///    (the "fence"), ensuring all prior `_Ctx` work is complete.
+/// 2. A synchronous DtoH copy on the **NULL stream** via `dtoh_sync_copy`
+///    (cudarc 0.9 does not expose a stream-targeted DtoH API).
+///
+/// The fence in step 1 makes step 2 safe. Without it, the NULL-stream copy
+/// could race with the forked-stream NPP work.
+///
+/// See [`docs/stream-context.md`](https://github.com/vansweej/npp-rs/blob/main/docs/stream-context.md)
+/// for the full rationale.
 #[cfg(not(tarpaulin_include))]
 impl<T: NppPixelType> TryFrom<&CudaImage<T>> for Vec<T> {
     type Error = NppError;
 
     fn try_from(img: &CudaImage<T>) -> Result<Self, Self::Error> {
-        let host: Vec<T> = img.device.dtoh_sync_copy(&img.buf)?;
+        // Step 1: host fence — block until all forked-stream work is done
+        img.ctx.synchronize()?;
+        // Step 2: NULL-stream DtoH copy (cudarc's only DtoH path)
+        let host: Vec<T> = img.ctx.device().dtoh_sync_copy(&img.buf)?;
         Ok(host)
     }
 }

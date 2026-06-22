@@ -1,20 +1,26 @@
 //! Application-managed NPP stream context abstraction.
 //!
-//! # Ordering correctness (key to the async contract)
+//! # Execution model
 //!
 //! NPP `_Ctx` functions are enqueued asynchronously on the stream stored
-//! in this context. **Correctness relies on implicit ordering guarantees**
-//! from [`CudaDevice::fork_default_stream`]:
+//! in this context. The ordering contract has two parts:
 //!
-//! 1. A host-to-device copy on the **default stream** completes first.
-//! 2. `fork_default_stream()` creates a new stream and inserts an implicit
-//!    wait so all previously-enqueued default-stream work is visible.
-//! 3. The NPP operation is enqueued on the **forked stream**.
-//! 4. Read-back (`TryFrom<&CudaImage>`) performs a synchronous DtoH copy
-//!    on the **forked stream**, which blocks until the NPP op completes.
+//! 1. **Upload → NPP op: ordered by construction.**
+//!    [`CudaDevice::fork_default_stream()`] creates a new stream with an
+//!    implicit wait so all prior default-stream work is visible. A
+//!    host-to-device copy on the default stream completes before the NPP
+//!    op on the forked stream begins.
 //!
-//! This means: `htod_copy → NPP_op → dtoh_readback` is ordered **by
-//! construction**, not by accident. See [`crate::stream`] module docs and
+//! 2. **NPP op → readback: requires explicit host fence.**
+//!    [`TryFrom<&CudaImage>`](crate::image::CudaImage) performs its DtoH
+//!    copy on the NULL stream (cudarc 0.9's only DtoH API —
+//!    `dtoh_sync_copy` does not accept a caller-supplied stream). The
+//!    forked stream and NULL stream are unordered. The host-blocking
+//!    [`synchronize()`](StreamContext::synchronize) call inserted *before*
+//!    the NULL-stream copy is the load-bearing barrier that makes this safe.
+//!
+//! **Earlier revisions** claimed the readback was on the forked stream and
+//! ordered by construction. That was incorrect — see
 //! [`docs/stream-context.md`](https://github.com/vansweej/npp-rs/blob/main/docs/stream-context.md)
 //! for the full rationale.
 //!
@@ -53,6 +59,7 @@ use npp_sys::NppStreamContext;
 /// - `TryFrom<&CudaImage>` read-back — synchronous DtoH copy.
 ///
 /// See the module-level docs for ordering-correctness rationale.
+#[derive(Debug)]
 pub struct StreamContext {
     device: Arc<CudaDevice>,
     stream: CudaStream,
@@ -97,11 +104,13 @@ impl StreamContext {
     }
 
     /// Reference to the underlying CUDA device.
+    #[cfg(not(tarpaulin_include))]
     pub fn device(&self) -> &Arc<CudaDevice> {
         &self.device
     }
 
     /// Reference to the CUDA stream.
+    #[cfg(not(tarpaulin_include))]
     pub fn stream(&self) -> &CudaStream {
         &self.stream
     }
@@ -115,6 +124,7 @@ impl StreamContext {
     /// (e.g. changing `hStream`) will cause NPP to enqueue operations
     /// on a different stream than expected, breaking the ordering contract.
     #[doc(hidden)]
+    #[cfg(not(tarpaulin_include))]
     pub fn raw_ctx(&self) -> NppStreamContext {
         // NppStreamContext is Copy (confirmed Phase 0.3b), so this is
         // an implicit bitwise copy. Safe because the struct is fully
@@ -122,12 +132,37 @@ impl StreamContext {
         self.raw
     }
 
-    /// Block until all operations enqueued on this stream complete.
+    /// Block the host until all operations enqueued on this stream complete.
     ///
-    /// This is the primary sync point for async NPP operations.
-    /// After calling `synchronize()`, results can be read back safely.
+    /// This is the primary sync point for async NPP operations. It calls
+    /// `cuStreamSynchronize` on the forked stream, which does not return
+    /// until all prior work on that stream has finished.
+    ///
+    /// After calling `synchronize()`, host-side readback of device results
+    /// is safe (no data race between NPP work on the forked stream and a
+    /// subsequent DtoH copy on the NULL stream).
     #[cfg(not(tarpaulin_include))]
     pub fn synchronize(&self) -> Result<(), DriverError> {
+        // SAFETY: self.stream.stream is a valid CUstream handle created by
+        // fork_default_stream and owned by CudaStream. The call to
+        // cuStreamSynchronize blocks the host until all work on this stream
+        // completes. The stream is guaranteed alive because CudaStream's Drop
+        // impl destroys it and we hold a reference.
+        unsafe { cudarc::driver::result::stream::synchronize(self.stream.stream) }
+    }
+
+    /// Device-side fence: ensure all prior work on this stream is visible
+    /// to subsequent work on other streams on the same device, without
+    /// blocking the host.
+    ///
+    /// This is useful for ordering operations between streams within the
+    /// same device context without a host round-trip. It is **not**
+    /// sufficient to make host-side readback safe — use [`synchronize`]
+    /// for that.
+    ///
+    /// [`synchronize`]: Self::synchronize
+    #[cfg(not(tarpaulin_include))]
+    pub fn device_fence(&self) -> Result<(), DriverError> {
         self.device.wait_for(&self.stream)
     }
 }

@@ -26,8 +26,10 @@ pub struct ClassifiedSymbol {
 /// variant replaces the standard one. This allows families like SwapChannels to use
 /// `C4C3R` instead of `C4R`.
 ///
-/// Variants with extra keywords (SqrPixel, Batch, Advanced, AC4, P{n}, C2, Sfs, Ctx)
-/// are rejected. Rejected symbols are simply omitted from the returned `Vec`.
+/// When both `C1R` and `C1R_Ctx` (or `C3R` and `C3R_Ctx`, etc.) exist for the same
+/// type and channel count, the `_Ctx` variant is preferred. Variants with extra
+/// keywords (SqrPixel, Batch, Advanced, AC4, P{n}, C2, Sfs) are rejected. Rejected
+/// symbols are simply omitted from the returned `Vec`.
 pub fn classify(
     symbols: &[&str],
     prefix: &str,
@@ -43,43 +45,91 @@ pub fn classify(
     // those channels are suppressed.
     let custom_chs: HashSet<u8> = custom_variants.iter().map(|(ch, _)| *ch).collect();
 
-    symbols
-        .iter()
-        .filter_map(|raw| {
-            let s = raw.strip_prefix(prefix)?;
-            // Reject any symbol with extra keywords after the prefix
-            if !s.starts_with(|c: char| c.is_ascii_digit() || c == 'f') {
-                return None; // e.g. "nppiResizeSqrPixel_8u_C1R"
+    // First pass: collect all valid candidates grouped by (type_token, channels)
+    let mut candidates: std::collections::HashMap<(String, u8), Vec<(String, String)>> =
+        std::collections::HashMap::new();
+
+    for raw in symbols {
+        let s = match raw.strip_prefix(prefix) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Reject any symbol with extra keywords after the prefix
+        if !s.starts_with(|c: char| c.is_ascii_digit() || c == 'f') {
+            continue; // e.g. "nppiResizeSqrPixel_8u_C1R"
+        }
+
+        let (type_token, rest) = match s.split_once('_') {
+            Some((t, r)) => (t, r),
+            None => continue,
+        };
+
+        // Validate type_token
+        if !["8u", "8s", "16u", "16s", "32u", "32s", "32f", "64f", "16f"].contains(&type_token) {
+            continue;
+        }
+
+        // Try to match variant and extract channels
+        let (channels, variant_base) = match rest {
+            "C1R" if accepted_channels.contains(&1) && !custom_chs.contains(&1) => (1, "C1R"),
+            "C1R_Ctx" if accepted_channels.contains(&1) && !custom_chs.contains(&1) => {
+                (1, "C1R_Ctx")
             }
-            let (type_token, rest) = s.split_once('_')?;
-            // Validate type_token
-            if !["8u", "8s", "16u", "16s", "32u", "32s", "32f", "64f", "16f"].contains(&type_token)
-            {
-                return None;
+            "C3R" if accepted_channels.contains(&3) && !custom_chs.contains(&3) => (3, "C3R"),
+            "C3R_Ctx" if accepted_channels.contains(&3) && !custom_chs.contains(&3) => {
+                (3, "C3R_Ctx")
             }
-            // Channel variant: standard (C1R/C3R/C4R) or custom (e.g. C4C3R).
-            // If a channel count has a custom variant, standard variants for that
-            // channel are suppressed.
-            let (channels, variant) = match rest {
-                "C1R" if accepted_channels.contains(&1) && !custom_chs.contains(&1) => (1, "C1R"),
-                "C3R" if accepted_channels.contains(&3) && !custom_chs.contains(&3) => (3, "C3R"),
-                "C4R" if accepted_channels.contains(&4) && !custom_chs.contains(&4) => (4, "C4R"),
-                // Custom variants matched by exact suffix
-                s if custom_variants.iter().any(|(_, v)| *v == s) => {
-                    let ch = custom_variants.iter().find(|(_, v)| *v == s).unwrap().0;
+            "C4R" if accepted_channels.contains(&4) && !custom_chs.contains(&4) => (4, "C4R"),
+            "C4R_Ctx" if accepted_channels.contains(&4) && !custom_chs.contains(&4) => {
+                (4, "C4R_Ctx")
+            }
+            // Custom variants matched by exact suffix (with optional _Ctx)
+            s if custom_variants.iter().any(|(_, v)| *v == s) => {
+                let ch = custom_variants.iter().find(|(_, v)| *v == s).unwrap().0;
+                (ch, s)
+            }
+            s if s.ends_with("_Ctx") => {
+                // Check if the base (without _Ctx) is a custom variant
+                let base = &s[..s.len() - 4]; // strip "_Ctx"
+                if custom_variants.iter().any(|(_, v)| *v == base) {
+                    let ch = custom_variants.iter().find(|(_, v)| *v == base).unwrap().0;
                     (ch, s)
+                } else {
+                    continue; // unknown variant with _Ctx suffix
                 }
-                _ => return None, // rejects AC4R, P3R, C2R, Ctx, etc.
+            }
+            _ => continue, // rejects AC4R, P3R, C2R, and other unknown variants
+        };
+
+        candidates
+            .entry((type_token.to_string(), channels))
+            .or_default()
+            .push((variant_base.to_string(), raw.to_string()));
+    }
+
+    // Second pass: for each (type_token, channels) group, prefer _Ctx if it exists
+    let mut result = Vec::new();
+    for ((type_token, channels), variants) in candidates {
+        // Prefer _Ctx variant if present
+        let (variant, raw) =
+            if let Some((v, r)) = variants.iter().find(|(v, _)| v.ends_with("_Ctx")) {
+                (v.clone(), r.clone())
+            } else {
+                let (v, r) = &variants[0];
+                (v.clone(), r.clone())
             };
-            Some(ClassifiedSymbol {
-                raw: raw.to_string(),
-                op: family.to_string(),
-                type_token: type_token.to_string(),
-                channels,
-                variant: variant.to_string(),
-            })
-        })
-        .collect()
+
+        result.push(ClassifiedSymbol {
+            raw,
+            op: family.to_string(),
+            type_token,
+            channels,
+            variant,
+        });
+    }
+
+    result
 }
 
 /// Classify NPP Resize symbols into the type×channel grid.
@@ -216,6 +266,57 @@ mod tests {
                     .contains(&cs.type_token.as_str()),
                 "unknown type_token {}",
                 cs.type_token
+            );
+        }
+    }
+
+    // ── _Ctx variant tests ──
+
+    #[test]
+    fn accept_8u_c1r_ctx() {
+        let result = classify_resize(&["nppiResize_8u_C1R_Ctx"]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].raw, "nppiResize_8u_C1R_Ctx");
+        assert_eq!(result[0].variant, "C1R_Ctx");
+        assert_eq!(result[0].channels, 1);
+    }
+
+    #[test]
+    fn accept_32f_c4r_ctx() {
+        let result = classify_resize(&["nppiResize_32f_C4R_Ctx"]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].variant, "C4R_Ctx");
+        assert_eq!(result[0].channels, 4);
+    }
+
+    #[test]
+    fn prefer_ctx_over_non_ctx() {
+        // When both C1R and C1R_Ctx exist, prefer _Ctx
+        let result = classify_resize(&["nppiResize_8u_C1R", "nppiResize_8u_C1R_Ctx"]);
+        assert_eq!(
+            result.len(),
+            1,
+            "should produce one result per (type, channel) pair"
+        );
+        assert_eq!(result[0].variant, "C1R_Ctx", "should prefer _Ctx variant");
+        assert_eq!(result[0].raw, "nppiResize_8u_C1R_Ctx");
+    }
+
+    #[test]
+    fn fixture_prefers_ctx_variants() {
+        // Verify that the fixture generates _Ctx variants when available
+        let text = include_str!("../tests/fixtures/nppiResize_symbols.txt");
+        let symbols: Vec<&str> = text
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        let result = classify_resize(&symbols);
+        // All results should have _Ctx variant (since fixture has both and we prefer _Ctx)
+        for cs in &result {
+            assert!(
+                cs.variant.ends_with("_Ctx"),
+                "fixture should produce _Ctx variants; got {}",
+                cs.variant
             );
         }
     }
