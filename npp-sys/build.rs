@@ -67,7 +67,10 @@ fn main() {
         .generate_comments(false)
         .allowlist_function("nppi.*")
         .allowlist_type("Nppi.*")
+        .allowlist_type("NppStreamContext")
+        .allowlist_type("Npp.*")
         .allowlist_var("Nppi.*")
+        .allowlist_var("NPP_.*")
         .generate()
         .expect("Unable to generate bindings");
 

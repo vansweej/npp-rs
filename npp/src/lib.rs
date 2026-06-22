@@ -47,6 +47,7 @@ pub mod resize_generated;
 pub mod resize_macros;
 /// Resize helper functions (`interpolation_mode`, `mode_supported`).
 pub mod resize_ops;
+pub mod stream;
 /// Generated `impl SwapChannels` for all supported types (committed artifact).
 pub mod swap_channels_generated;
 /// Macro to generate `impl SwapChannels` for image types.
