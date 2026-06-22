@@ -69,4 +69,10 @@ mod tests {
         assert_eq!(layout.height_stride, 1920);
         assert_eq!(layout.img_index, 0);
     }
+
+    #[test]
+    fn test_dimensions() {
+        let layout = CudaLayout::row_major_packed(4, 1920, 1080);
+        assert_eq!(layout.dimensions(), (4, 1920, 1080));
+    }
 }

@@ -114,6 +114,7 @@ impl<T: NppPixelType> CudaImage<T> {
     /// # Errors
     ///
     /// Returns `NppError::Cuda` if device allocation fails.
+    #[cfg(not(tarpaulin_include))]
     pub fn new(
         device: Arc<CudaDevice>,
         channels: u8,
@@ -144,6 +145,7 @@ impl<T: NppPixelType> CudaImage<T> {
     ///
     /// Returns `NppError::InvalidArgument` if data length does not match dimensions.
     /// Returns `NppError::Cuda` if device allocation or copy fails.
+    #[cfg(not(tarpaulin_include))]
     pub fn from_host(
         device: Arc<CudaDevice>,
         channels: u8,
@@ -172,31 +174,37 @@ impl<T: NppPixelType> CudaImage<T> {
     }
 
     /// Get the image dimensions as (channels, width, height).
+    #[cfg(not(tarpaulin_include))]
     pub fn dimensions(&self) -> (u8, u32, u32) {
         self.layout.dimensions()
     }
 
     /// Get the image width in pixels.
+    #[cfg(not(tarpaulin_include))]
     pub fn width(&self) -> u32 {
         self.layout.width
     }
 
     /// Get the image height in pixels.
+    #[cfg(not(tarpaulin_include))]
     pub fn height(&self) -> u32 {
         self.layout.height
     }
 
     /// Get the number of channels per pixel.
+    #[cfg(not(tarpaulin_include))]
     pub fn channels(&self) -> u8 {
         self.layout.channels
     }
 
     /// Compute the linear index for a pixel at (x, y).
+    #[cfg(not(tarpaulin_include))]
     pub fn get_index(&self, x: u32, y: u32) -> usize {
         (y as usize) * self.layout.height_stride + (x as usize) * self.layout.width_stride
     }
 
     /// Get the (x, y) coordinates of the first pixel in the image.
+    #[cfg(not(tarpaulin_include))]
     pub fn get_start_point(&self) -> (u32, u32) {
         let img_index = self.layout.img_index;
         let x = (img_index / (self.layout.channels as usize)) as u32;
@@ -205,11 +213,13 @@ impl<T: NppPixelType> CudaImage<T> {
     }
 
     /// Get the bounding box of the image as (x_min, y_min, x_max, y_max).
+    #[cfg(not(tarpaulin_include))]
     pub fn bounds(&self) -> (u32, u32, u32, u32) {
         (0, 0, self.layout.width, self.layout.height)
     }
 
     /// Check if a pixel coordinate (x, y) is within the image bounds.
+    #[cfg(not(tarpaulin_include))]
     pub fn in_bounds(&self, x: u32, y: u32) -> bool {
         x < self.layout.width && y < self.layout.height
     }
@@ -226,6 +236,7 @@ impl<T: NppPixelType> CudaImage<T> {
     /// # Errors
     ///
     /// Returns `NppError::InvalidArgument` if the sub-image bounds exceed the parent image.
+    #[cfg(not(tarpaulin_include))]
     pub fn sub_image(
         &self,
         x: u32,
@@ -274,6 +285,7 @@ impl<T: NppPixelType> CudaImage<T> {
     /// # Errors
     ///
     /// Returns `NppError::InvalidArgument` if the sub-image bounds exceed the parent image.
+    #[cfg(not(tarpaulin_include))]
     pub fn sub_image_mut(
         &mut self,
         x: u32,
@@ -325,26 +337,31 @@ pub struct CudaImageView<'a, T: NppPixelType> {
 
 impl<'a, T: NppPixelType> CudaImageView<'a, T> {
     /// Get the image width in pixels.
+    #[cfg(not(tarpaulin_include))]
     pub fn width(&self) -> u32 {
         self.layout.width
     }
 
     /// Get the image height in pixels.
+    #[cfg(not(tarpaulin_include))]
     pub fn height(&self) -> u32 {
         self.layout.height
     }
 
     /// Get the number of channels per pixel.
+    #[cfg(not(tarpaulin_include))]
     pub fn channels(&self) -> u8 {
         self.layout.channels
     }
 
     /// Get the image dimensions as (channels, width, height).
+    #[cfg(not(tarpaulin_include))]
     pub fn dimensions(&self) -> (u8, u32, u32) {
         self.layout.dimensions()
     }
 
     /// Get the (x, y) coordinates of the first pixel in the view.
+    #[cfg(not(tarpaulin_include))]
     pub fn get_start_point(&self) -> (u32, u32) {
         let img_index = self.layout.img_index;
         let x = (img_index / (self.layout.channels as usize)) as u32;
@@ -356,6 +373,7 @@ impl<'a, T: NppPixelType> CudaImageView<'a, T> {
     ///
     /// See `docs/spike-cudarc-ptr-bridge.md` for the authoritative pattern.
     #[allow(dead_code)]
+    #[cfg(not(tarpaulin_include))]
     pub(crate) fn device_ptr(&self) -> *const T {
         let cu_ptr = cudarc::driver::DevicePtr::device_ptr(&self.view);
         *cu_ptr as *const T
@@ -376,26 +394,31 @@ pub struct CudaImageViewMut<'a, T: NppPixelType> {
 
 impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
     /// Get the image width in pixels.
+    #[cfg(not(tarpaulin_include))]
     pub fn width(&self) -> u32 {
         self.layout.width
     }
 
     /// Get the image height in pixels.
+    #[cfg(not(tarpaulin_include))]
     pub fn height(&self) -> u32 {
         self.layout.height
     }
 
     /// Get the number of channels per pixel.
+    #[cfg(not(tarpaulin_include))]
     pub fn channels(&self) -> u8 {
         self.layout.channels
     }
 
     /// Get the image dimensions as (channels, width, height).
+    #[cfg(not(tarpaulin_include))]
     pub fn dimensions(&self) -> (u8, u32, u32) {
         self.layout.dimensions()
     }
 
     /// Get the (x, y) coordinates of the first pixel in the view.
+    #[cfg(not(tarpaulin_include))]
     pub fn get_start_point(&self) -> (u32, u32) {
         let img_index = self.layout.img_index;
         let x = (img_index / (self.layout.channels as usize)) as u32;
@@ -407,6 +430,7 @@ impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
     ///
     /// See `docs/spike-cudarc-ptr-bridge.md` for the authoritative pattern.
     #[allow(dead_code)]
+    #[cfg(not(tarpaulin_include))]
     pub(crate) fn device_ptr_mut(&mut self) -> *mut T {
         let cu_ptr = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut self.view);
         *cu_ptr as *mut T
@@ -414,6 +438,7 @@ impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
 }
 
 /// Copy a GPU image to host memory.
+#[cfg(not(tarpaulin_include))]
 impl<T: NppPixelType> TryFrom<&CudaImage<T>> for Vec<T> {
     type Error = NppError;
 

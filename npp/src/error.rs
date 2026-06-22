@@ -35,3 +35,24 @@ pub fn check_status(status: NppStatus) -> Result<(), NppError> {
         Err(NppError::Npp(status))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_status_ok_zero() {
+        assert!(check_status(0).is_ok());
+    }
+
+    #[test]
+    fn test_check_status_ok_positive_warning() {
+        assert!(check_status(1).is_ok());
+    }
+
+    #[test]
+    fn test_check_status_error_negative() {
+        let err = check_status(-22).unwrap_err();
+        assert_eq!(format!("{}", err), "NPP returned error status -22");
+    }
+}

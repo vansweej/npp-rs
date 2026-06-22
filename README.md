@@ -34,6 +34,9 @@ cargo test --features gpu
 cargo clippy -- -D warnings
 cargo fmt --check
 
+# Coverage (non-GPU surface)
+cargo tarpaulin
+
 # Documentation
 cargo doc --no-deps -p npp-rs -p npp-sys
 ```

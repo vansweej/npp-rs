@@ -38,4 +38,44 @@ mod tests {
     fn test_mode_supported_returns_true() {
         assert!(mode_supported("8u", ResizeInterpolation::NearestNeighbor));
     }
+
+    #[test]
+    fn test_interpolation_mode_nearest_neighbor() {
+        assert_eq!(
+            interpolation_mode(ResizeInterpolation::NearestNeighbor),
+            NppiInterpolationMode_NPPI_INTER_NN as i32
+        );
+    }
+
+    #[test]
+    fn test_interpolation_mode_linear() {
+        assert_eq!(
+            interpolation_mode(ResizeInterpolation::Linear),
+            NppiInterpolationMode_NPPI_INTER_LINEAR as i32
+        );
+    }
+
+    #[test]
+    fn test_interpolation_mode_cubic() {
+        assert_eq!(
+            interpolation_mode(ResizeInterpolation::Cubic),
+            NppiInterpolationMode_NPPI_INTER_CUBIC as i32
+        );
+    }
+
+    #[test]
+    fn test_interpolation_mode_super() {
+        assert_eq!(
+            interpolation_mode(ResizeInterpolation::Super),
+            NppiInterpolationMode_NPPI_INTER_SUPER as i32
+        );
+    }
+
+    #[test]
+    fn test_interpolation_mode_lanczos() {
+        assert_eq!(
+            interpolation_mode(ResizeInterpolation::Lanczos),
+            NppiInterpolationMode_NPPI_INTER_LANCZOS as i32
+        );
+    }
 }

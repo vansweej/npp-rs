@@ -69,6 +69,17 @@ cargo clippy -- -D warnings
 cargo fmt --check
 ```
 
+## Coverage
+
+```bash
+nix develop . --command cargo tarpaulin
+```
+
+This runs `cargo tarpaulin` on the **non-GPU surface** only (pure-logic layout,
+error handling, codegen tests). GPU/CUDA/FFI code is excluded via
+`tarpaulin.toml` globs and `#[cfg(not(tarpaulin_include))]` annotations.
+The gate is set at 90 % — anything below that fails the run.
+
 ## Documentation
 
 ```bash
