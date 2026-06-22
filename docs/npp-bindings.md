@@ -82,8 +82,10 @@ errors (finding C1/NEW-01 in the architecture review).
 
 - The `CudaSlice<T>` must NOT be dropped for the duration of the NPP call.
   Derive the raw pointer and make the FFI call in the same scope.
-- Source and destination buffers must be **non-overlapping** (C4). Passing
-  overlapping ROIs to NPP is undefined behaviour.
+- Source and destination buffers must not overlap in memory (C4). This applies to
+  **neighbourhood-gather** operations (e.g. resize samples a pixel window); aliasing
+  produces undefined results. Purely **elementwise** operations may safely alias
+  (see `Normalize`).
 - The `Arc<CudaDevice>` must outlive all `CudaImage`s created from it (C7).
 
 ## Build system integration

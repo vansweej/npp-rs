@@ -25,9 +25,10 @@ pub enum ResizeInterpolation {
 ///
 /// # Precondition
 ///
-/// `src` and `dst` must refer to **non-overlapping** device buffers.
-/// Passing overlapping ROIs (e.g. two sub-views of the same parent image)
-/// to resize is undefined behavior in NPP.
+/// `src` and `dst` must not overlap in memory. This applies to
+/// **neighbourhood-gather** operations (e.g. resize samples a pixel window);
+/// aliasing produces undefined results. Purely **elementwise** operations may
+/// safely alias (see `Normalize`).
 pub trait Resize: Sized {
     /// Resize `self` into `dst` using the given interpolation method.
     ///
@@ -43,7 +44,9 @@ pub trait Resize: Sized {
 ///
 /// # Precondition
 ///
-/// `src` and `dst` must refer to **non-overlapping** device buffers.
+/// `src` and `dst` must not overlap in memory. This applies to
+/// **neighbourhood-gather** operations; aliasing produces undefined results.
+/// Purely **elementwise** operations may safely alias (see `Normalize`).
 pub trait SwapChannels: Sized {
     /// Reorder channels from BGRA (4-channel) to RGB (3-channel).
     ///

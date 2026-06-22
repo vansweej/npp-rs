@@ -20,7 +20,9 @@
 ///
 /// # Safety
 ///
-/// `self` and `dst` must refer to **non-overlapping** device buffers (C4).
+/// `self` and `dst` must not overlap in memory. This applies to
+/// **neighbourhood-gather** operations; aliasing produces undefined results.
+/// Purely **elementwise** operations may safely alias (see `Normalize`).
 #[macro_export]
 macro_rules! impl_resize_for {
     ($rust_ty:ty, $token:expr, { $($ch:literal => $sym:path),+ $(,)? }) => {
@@ -44,8 +46,9 @@ macro_rules! impl_resize_for {
             ///
             /// # Precondition
             ///
-            /// `self` and `dst` must refer to **non-overlapping** device buffers.
-            /// Passing overlapping ROIs is undefined behaviour in NPP (C4).
+            /// `self` and `dst` must not overlap in memory. This applies to
+            /// **neighbourhood-gather** operations; aliasing produces undefined results.
+            /// Purely **elementwise** operations may safely alias (see `Normalize`).
             ///
             /// # Errors
             ///
