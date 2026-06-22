@@ -31,6 +31,19 @@ have generated impls covering the full `NppPixelType` alphabet:
 | `SwapChannels` | `u8`, `u16`, `i16`, `f32`, `i32` | C4C3R only | `swap_channels_generated.rs` |
 | `Mean` | `u8`, `u16`, `i16`, `f32` | C1, C3, C4 | `mean_generated.rs` |
 
+### Hand-written ops
+
+The following families are **hand-written** (not macro-generated) in `convert_ops.rs`:
+
+| Family | Types | Channels | Source |
+|--------|-------|----------|--------|
+| `ConvertTo` | `u8 → f32` | C1, C3 | `convert_ops.rs` |
+| `Normalize` | `u8 → f32` | C1, C3 | `convert_ops.rs` |
+
+These hand-written impls establish the pattern and deliver the immediate `u8→f32` neural-network
+preprocessing need. Codegen generalization to the full `NppPixelType` alphabet is deferred
+to F5.1.
+
 ## How to add a new NPP operation
 
 1. **Ensure the symbol is in the allowlist.** If it matches `nppi.*`, `Nppi.*`,
@@ -82,8 +95,10 @@ errors (finding C1/NEW-01 in the architecture review).
 
 - The `CudaSlice<T>` must NOT be dropped for the duration of the NPP call.
   Derive the raw pointer and make the FFI call in the same scope.
-- Source and destination buffers must be **non-overlapping** (C4). Passing
-  overlapping ROIs to NPP is undefined behaviour.
+- Source and destination buffers must not overlap in memory (C4). This applies to
+  **neighbourhood-gather** operations (e.g. resize samples a pixel window); aliasing
+  produces undefined results. Purely **elementwise** operations may safely alias
+  (see `Normalize`).
 - The `Arc<CudaDevice>` must outlive all `CudaImage`s created from it (C7).
 
 ## Build system integration
