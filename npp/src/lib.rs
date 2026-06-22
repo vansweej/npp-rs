@@ -9,6 +9,9 @@
 //! (e.g. [`Resize`](crate::imageops::Resize), [`SwapChannels`](crate::imageops::SwapChannels)): an unsupported `(type, op)` pair simply
 //! has no trait impl, making it a compile-time error.
 //!
+//! Cross-type operations ([`ConvertTo`](crate::imageops::ConvertTo), [`Normalize`](crate::imageops::Normalize))
+//! convert between different pixel types (e.g. `u8 → f32`).
+//!
 //! Round-trip to host memory uses `TryFrom<&CudaImage<T>> for Vec<T>`.
 //! There is no `image` crate dependency in the core.
 //!
@@ -26,14 +29,14 @@
 
 #![deny(missing_docs)]
 
+/// Cross-type pixel format conversion operations (hand-written).
+pub mod convert_ops;
 pub mod cuda;
 /// NPP error types and the `check_status` helper.
 pub mod error;
-/// Cross-type pixel format conversion operations (hand-written).
-pub mod convert_ops;
 /// Core GPU image type with `NppPixelType` marker trait.
 pub mod image;
-/// Capability traits (`Resize`, `SwapChannels`, `ConvertTo`).
+/// Capability traits (`Resize`, `SwapChannels`, `ConvertTo`, `Normalize`).
 pub mod imageops;
 /// Packed memory layout description.
 pub mod layout;

@@ -184,20 +184,37 @@ crosses the boundary.
 
 ---
 
-## F5 — Pixel-format conversion ops (`u8 ↔ f32`, scaling)
+## F5 — Pixel-format conversion ops (`u8 ↔ f32`, scaling) *(slice complete)*
 
 **What:** On-device pixel *conversion* operations — e.g.
 `RgbImage<u8> → RgbImage<f32>`, normalization/scaling — backed by NPP's
-`nppiConvert_*` / `nppiScale_*` families.
+`nppiConvert_*` / `nppiMulC_*` families.
 
-**Why:** A convert is its own NPP op, slotting in as another capability trait
-once the macro infrastructure exists. The `u8→f32` normalise is the exact
-operation an NN-preprocessing pipeline wants, so it may deserve priority once
-the alphabet ops land.
+**Status:** Hand-written `u8 → f32` slice complete (commits `9cb8529`–`cbac264`).
+Committed artifacts: `npp/src/convert_ops.rs`, `npp/src/imageops.rs` (ConvertTo/Normalize traits),
+`npp/tests/golden_convert.rs`, `npp/tests/golden_normalize.rs`. Supports C1 and C3 channels.
+Normalize implements [0,255] → [0.0,1.0] scaling for NN preprocessing via convert + in-place MulC.
 
-**Dependencies:** Cleanest after F1/F2 (it's "just another capability" once
-codegen exists), but the normalise use case may justify hand-writing
-`Convert for CudaImage<u8> → CudaImage<f32>` needed-earlier.
+**Deferred to F5.1:** Codegen generalization to cover the full `NppPixelType` alphabet
+and all supported channel counts (C4, etc.). Hand-written slice establishes the pattern
+and validates the two-trait design (ConvertTo + Normalize).
+
+**Dependencies:** F1/F2 (macro infrastructure), but hand-written slice was prioritized
+for the NN-preprocessing use case.
+
+---
+
+## F5.1 — Cross-type convert/normalize codegen
+
+**What:** Generalize the hand-written `u8 → f32` ConvertTo/Normalize impls to cover
+the full `NppPixelType` alphabet and all supported channel counts via macro codegen
+(similar to F1/F2's Resize/SwapChannels/Mean pattern).
+
+**Why:** F5's hand-written slice validates the trait design and delivers the immediate
+NN-preprocessing need. F5.1 extends it to all types and channels, following the proven
+codegen pattern.
+
+**Dependencies:** F5 (establishes the trait and pattern), F1/F2 (macro infrastructure).
 
 ---
 

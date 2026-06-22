@@ -31,6 +31,19 @@ have generated impls covering the full `NppPixelType` alphabet:
 | `SwapChannels` | `u8`, `u16`, `i16`, `f32`, `i32` | C4C3R only | `swap_channels_generated.rs` |
 | `Mean` | `u8`, `u16`, `i16`, `f32` | C1, C3, C4 | `mean_generated.rs` |
 
+### Hand-written ops
+
+The following families are **hand-written** (not macro-generated) in `convert_ops.rs`:
+
+| Family | Types | Channels | Source |
+|--------|-------|----------|--------|
+| `ConvertTo` | `u8 → f32` | C1, C3 | `convert_ops.rs` |
+| `Normalize` | `u8 → f32` | C1, C3 | `convert_ops.rs` |
+
+These hand-written impls establish the pattern and deliver the immediate `u8→f32` neural-network
+preprocessing need. Codegen generalization to the full `NppPixelType` alphabet is deferred
+to F5.1.
+
 ## How to add a new NPP operation
 
 1. **Ensure the symbol is in the allowlist.** If it matches `nppi.*`, `Nppi.*`,
