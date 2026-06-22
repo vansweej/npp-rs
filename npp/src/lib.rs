@@ -29,9 +29,11 @@
 pub mod cuda;
 /// NPP error types and the `check_status` helper.
 pub mod error;
+/// Cross-type pixel format conversion operations (hand-written).
+pub mod convert_ops;
 /// Core GPU image type with `NppPixelType` marker trait.
 pub mod image;
-/// Capability traits (`Resize`, `SwapChannels`).
+/// Capability traits (`Resize`, `SwapChannels`, `ConvertTo`).
 pub mod imageops;
 /// Packed memory layout description.
 pub mod layout;

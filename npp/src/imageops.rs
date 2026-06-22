@@ -1,4 +1,5 @@
 use crate::error::NppError;
+use crate::image::{CudaImage, NppPixelType};
 
 /// Interpolation methods supported by NPP resize operations.
 ///
@@ -72,4 +73,71 @@ pub trait Mean: Sized {
     /// Returns a `Vec<f64>` with one entry per channel (e.g. 3 values for a
     /// 3-channel image).
     fn mean(&self) -> Result<Vec<f64>, NppError>;
+}
+
+/// Capability trait for cross-type pixel format conversion.
+///
+/// Converts `self` (source image) into a destination image of a different pixel type.
+/// This is the crate's first cross-type operation family. Implemented only for
+/// pixel type pairs that NPP supports for conversion (e.g. `u8 → f32`).
+/// Unsupported `(src_type, dst_type)` pairs simply have no impl — calling them is
+/// a compile-time error.
+///
+/// # Precondition
+///
+/// `src` and `dst` must not overlap in memory. This applies to
+/// **neighbourhood-gather** operations; aliasing produces undefined results.
+/// Purely **elementwise** operations may safely alias (see `Normalize`).
+///
+/// The destination image's `width`, `height`, and `channels` must match the source.
+/// Mismatched dimensions result in `NppError::InvalidArgument`.
+pub trait ConvertTo<Dst: NppPixelType> {
+    /// Convert `self` into `dst`, performing type conversion and scaling as needed.
+    ///
+    /// The destination buffer is overwritten with the converted pixel values.
+    /// The byte-step of the destination is computed from its element type
+    /// (`size_of::<Dst>()`), not the source type.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NppError::InvalidArgument` if `self` and `dst` dimensions or
+    /// channel counts disagree, or if the conversion is not supported for the
+    /// given channel count.
+    /// Returns `NppError::Npp` if the underlying NPP call fails.
+    fn convert(&self, dst: &mut CudaImage<Dst>) -> Result<(), NppError>;
+}
+
+/// Capability trait for cross-type pixel normalization.
+///
+/// Normalizes `self` (source image) into a destination image of a different pixel type,
+/// typically scaling to a standard range (e.g. `[0, 255] → [0.0, 1.0]` for neural network
+/// preprocessing). Implemented only for pixel type pairs that NPP supports for
+/// normalization (e.g. `u8 → f32`). Unsupported `(src_type, dst_type)` pairs simply
+/// have no impl — calling them is a compile-time error.
+///
+/// # Precondition
+///
+/// `src` and `dst` must not overlap in memory. The convert step obeys the non-overlap
+/// requirement for **neighbourhood-gather** operations; the scale step is purely
+/// **elementwise** and may safely alias (see Phase 0 C4 wording).
+///
+/// The destination image's `width`, `height`, and `channels` must match the source.
+/// Mismatched dimensions result in `NppError::InvalidArgument`.
+pub trait Normalize<Dst: NppPixelType> {
+    /// Normalize `self` into `dst`, performing type conversion and range scaling.
+    ///
+    /// For `u8 → f32`, this converts `[0, 255]` to `[0.0, 1.0]` by first calling
+    /// `convert` (producing `[0.0, 255.0]`), then scaling by `1/255` in-place.
+    ///
+    /// The destination buffer is overwritten with the normalized pixel values.
+    /// The byte-step of the destination is computed from its element type
+    /// (`size_of::<Dst>()`), not the source type.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NppError::InvalidArgument` if `self` and `dst` dimensions or
+    /// channel counts disagree, or if the normalization is not supported for the
+    /// given channel count.
+    /// Returns `NppError::Npp` if the underlying NPP call fails.
+    fn normalize(&self, dst: &mut CudaImage<Dst>) -> Result<(), NppError>;
 }
