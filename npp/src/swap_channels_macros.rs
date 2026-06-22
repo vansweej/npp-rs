@@ -89,6 +89,7 @@ macro_rules! impl_swap_channels_for {
                                 dst_step_bytes,
                                 nppi_size,
                                 &order[0],
+                                self.ctx.raw_ctx(),
                             ),
                         )+
                         _ => {

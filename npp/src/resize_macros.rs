@@ -114,6 +114,8 @@ macro_rules! impl_resize_for {
                                 dst_size,
                                 dst_rect,
                                 $crate::resize_ops::interpolation_mode(inter),
+                                // Trailing NppStreamContext (by value, Copy):
+                                self.ctx.raw_ctx(),
                             ),
                         )+
                         _ => {

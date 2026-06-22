@@ -5,6 +5,18 @@
 //! coercion fails at compile time. This is the strongest non-GPU check
 //! available without calling the FFI.
 //!
+//! # ABI migration gate (e.g. CUDA 12.x → 13.x)
+//!
+//! If any coercion test below fails after a CUDA/NPP version bump:
+//!
+//! 1. The NPP signature changed — do NOT just edit the type to compile.
+//! 2. Inspect the regenerated `bindings.rs`; identify the ABI change
+//!    (e.g. `int` → `size_t`, field added/removed from `NppStreamContext`).
+//! 3. Update the matching macro in `npp/src/*_macros.rs` and the
+//!    `raw_ctx()` return type / method signature if needed.
+//! 4. Re-pin ALL affected golden tests (C12 discipline).
+//! 5. Refresh the Phase 0 findings table in this file.
+//!
 //! # Phase 0 findings (recorded 2026-06-22)
 //!
 //! All four expected `_Ctx` symbols exist with trailing `NppStreamContext`

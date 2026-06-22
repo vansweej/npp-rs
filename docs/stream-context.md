@@ -1,44 +1,69 @@
 # Stream-context ordering model
 
-This document explains the async contract guaranteed by
+This document explains the async contract of
 [`StreamContext`](../npp/src/stream.rs) and how it eliminates the race
 conditions identified in C8 (review finding: "no stream / execution-context
 model; correctness is emergent default-stream side-effect").
 
-## Ordered execution without explicit synchronisation
+## Execution model
 
-`StreamContext` guarantees ordering between these three phases **by
-construction**:
+`StreamContext` provides three execution stages with two distinct ordering
+guarantees:
 
-1. **Host-to-device copies** — performed on the default stream (e.g.
-   `CudaDevice::htod_sync_copy_into`).
-2. **NPP operations** — enqueued on the `StreamContext`'s forked stream
+1. **Host-to-device copies** are performed on the CUDA default stream
+   (e.g. `CudaDevice::htod_sync_copy_into`).
+2. **NPP operations** are enqueued on the `StreamContext`'s forked stream
    via the `_Ctx` API.
-3. **Device-to-host read-backs** — synchronous DtoH copy on the forked
-   stream (e.g. `TryFrom<&CudaImage>`).
+3. **Device-to-host read-backs** (`TryFrom<&CudaImage>`) execute on the
+   **NULL stream** via cudarc's `dtoh_sync_copy`.
 
-## The guarantee
+## Ordering guarantees
 
-The guarantee rests on
-[`CudaDevice::fork_default_stream()`](https://docs.rs/cudarc/latest/cudarc/driver/struct.CudaDevice.html#method.fork_default_stream):
+### Stage 1 → Stage 2: Ordered by forked-stream creation wait
 
-> The forked stream inserts an implicit wait that makes all prior
-> default-stream work visible before the first operation on the forked
-> stream executes.
+[`CudaDevice::fork_default_stream()`](https://docs.rs/cudarc/latest/cudarc/driver/struct.CudaDevice.html#method.fork_default_stream)
+creates a new stream and inserts an **implicit wait** that makes all prior
+default-stream work visible before the first operation on the forked stream
+executes. This means **HTOD copy → NPP op** is ordered **by construction**
+— no explicit synchronisation needed between upload and computation.
 
-This means the sequence `htod_copy → NPP_op → dtoh_readback` is ordered
-**without any explicit synchronisation between steps 1 and 2**. The
-forked stream's creation wait is the ordering barrier.
+### Stage 2 → Stage 3: NOT ordered — requires explicit host fence
+
+`TryFrom<&CudaImage>` performs a synchronous DtoH copy on the **NULL
+stream** via `dtoh_sync_copy`. cudarc 0.9 does not expose a stream-targeted
+DtoH API — the copy always goes to the NULL stream. The forked stream
+(NPP ops) and the NULL stream (readback) are genuinely **unordered** unless
+an explicit barrier is inserted.
+
+The barrier is the host-blocking `synchronize()` call (via
+`cuStreamSynchronize`) on the forked stream **before** the NULL-stream
+copy. This is implemented in `TryFrom<&CudaImage>`:
+
+```rust
+img.ctx.synchronize()?;                    // host fence
+ctx.device().dtoh_sync_copy(&img.buf)?;    // NULL-stream copy
+```
+
+### Retraction
+
+Earlier revisions of this document stated that the readback was ordered
+"by construction" on the forked stream. This was incorrect. The fence in
+`TryFrom<&CudaImage>` is **load-bearing** — removing it would create a
+data race between NPP work on the forked stream and the NULL-stream DtoH
+copy.
 
 ## Sync points
 
-When explicit synchronisation is needed (e.g. for benchmarking, or to
-ensure host-side observation of device results):
-
-- [`StreamContext::synchronize()`](../npp/src/stream.rs) — blocks the
-  host until all operations enqueued on this stream complete.
-- `TryFrom<&CudaImage>` read-back — performs a synchronous DtoH copy
-  on the stream, which blocks until all prior work on that stream is done.
+- [`StreamContext::synchronize()`](../npp/src/stream.rs) — Host-blocking
+  fence. Calls `cuStreamSynchronize` on the forked stream. Guarantees all
+  prior `_Ctx` work is complete before the host continues.
+- [`TryFrom<&CudaImage>`](../npp/src/image.rs) — Performs a host fence
+  via `synchronize()` followed by a NULL-stream DtoH copy. This is the
+  recommended readback path for single-step or chained pipelines.
+- [`StreamContext::device_fence()`](../npp/src/stream.rs) — Device-side
+  only. Calls `cuEventSynchronize` (via `CudaDevice::wait_for`). Orders
+  work between streams on the same device without blocking the host. Not
+  sufficient for host readback safety.
 
 ## Why this closes C8
 
@@ -51,9 +76,11 @@ By switching to:
 - **application-populated** `NppStreamContext` (not the deprecated
   `nppGetStreamContext`)
 - a **dedicated forked stream** per `StreamContext`
-- **explicit sync points** (`synchronize()` and read-back)
+- **explicit sync points** (`synchronize()`, `device_fence()`, readback
 
 every operation's ordering is deterministic and documented, not emergent.
+The fence specifically addresses the cross-stream race between the forked-
+stream NPP work and the NULL-stream DtoH copy.
 
 ## StreamContext is `!Send + !Sync`
 
@@ -63,9 +90,11 @@ for shared ownership within a single thread (or under external
 synchronisation). Use a separate `StreamContext` per thread if concurrent
 GPU work is needed.
 
-## Relation to M2
+## Relation to Session 2 (F8)
 
-The current `StreamContext` is a standalone abstraction. Session 2 of F8
-will thread `Arc<StreamContext>` onto `CudaImage` and pivot the three
-existing operations (Resize, SwapChannels, Mean) to use `_Ctx` variants.
+Session 2 of F8 threads `Arc<StreamContext>` onto `CudaImage` (replacing
+the former `Arc<CudaDevice>` field) and pivots the three existing
+operations (Resize, SwapChannels, Mean) to use `_Ctx` variants. The
+`StreamContext` is now integral to every image — all operations go through
+the `_Ctx` NPP API and respect the async contract described above.
 See [`docs/roadmap.md`](roadmap.md) §F8.

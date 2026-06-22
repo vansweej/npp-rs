@@ -8,25 +8,25 @@ use crate::impl_resize_for;
 use npp_sys::{NppiRect, NppiSize};
 
 impl_resize_for!(i16, "16s", {
-        1 => npp_sys::nppiResize_16s_C1R,
-        3 => npp_sys::nppiResize_16s_C3R,
-        4 => npp_sys::nppiResize_16s_C4R,
+        1 => npp_sys::nppiResize_16s_C1R_Ctx,
+        3 => npp_sys::nppiResize_16s_C3R_Ctx,
+        4 => npp_sys::nppiResize_16s_C4R_Ctx,
 });
 
 impl_resize_for!(u16, "16u", {
-        1 => npp_sys::nppiResize_16u_C1R,
-        3 => npp_sys::nppiResize_16u_C3R,
-        4 => npp_sys::nppiResize_16u_C4R,
+        1 => npp_sys::nppiResize_16u_C1R_Ctx,
+        3 => npp_sys::nppiResize_16u_C3R_Ctx,
+        4 => npp_sys::nppiResize_16u_C4R_Ctx,
 });
 
 impl_resize_for!(f32, "32f", {
-        1 => npp_sys::nppiResize_32f_C1R,
-        3 => npp_sys::nppiResize_32f_C3R,
-        4 => npp_sys::nppiResize_32f_C4R,
+        1 => npp_sys::nppiResize_32f_C1R_Ctx,
+        3 => npp_sys::nppiResize_32f_C3R_Ctx,
+        4 => npp_sys::nppiResize_32f_C4R_Ctx,
 });
 
 impl_resize_for!(u8, "8u", {
-        1 => npp_sys::nppiResize_8u_C1R,
-        3 => npp_sys::nppiResize_8u_C3R,
-        4 => npp_sys::nppiResize_8u_C4R,
+        1 => npp_sys::nppiResize_8u_C1R_Ctx,
+        3 => npp_sys::nppiResize_8u_C3R_Ctx,
+        4 => npp_sys::nppiResize_8u_C4R_Ctx,
 });

@@ -62,7 +62,11 @@ macro_rules! impl_mean_for {
                 let status = unsafe {
                     match ch {
                         $(
-                            $ch => $buffer_sym(nppi_size, &mut buffer_size as *mut usize),
+                            $ch => $buffer_sym(
+                                nppi_size,
+                                &mut buffer_size as *mut usize,
+                                self.ctx.raw_ctx(),
+                            ),
                         )+
                         _ => {
                             return Err(NppError::InvalidArgument(format!(
@@ -77,11 +81,11 @@ macro_rules! impl_mean_for {
 
                 // ── Step 2: allocate scratch buffer on device ──
                 let mut scratch_buf: cudarc::driver::CudaSlice<u8> =
-                    self.device.alloc_zeros::<u8>(buffer_size)?;
+                    self.ctx.device().alloc_zeros::<u8>(buffer_size)?;
 
                 // ── Step 3: allocate output buffer on device ──
                 let mut out_buf: cudarc::driver::CudaSlice<f64> =
-                    self.device.alloc_zeros::<f64>(ch as usize)?;
+                    self.ctx.device().alloc_zeros::<f64>(ch as usize)?;
 
                 // nStep is in BYTES. height_stride counts elements. Convert.
                 let src_step_bytes =
@@ -109,6 +113,7 @@ macro_rules! impl_mean_for {
                                 nppi_size,
                                 scratch_ptr as *mut u8,
                                 out_ptr as *mut f64,
+                                self.ctx.raw_ctx(),
                             ),
                         )+
                         _ => unreachable!(), // already handled above
@@ -117,7 +122,11 @@ macro_rules! impl_mean_for {
                 check_status(status)?;
 
                 // ── Step 5: read back results ──
-                let result: Vec<f64> = self.device.dtoh_sync_copy(&out_buf)?;
+                // Readback uses the device handle through the StreamContext.
+                // The synchronize() fence is in TryFrom<&CudaImage>, but Mean
+                // does its own internal DtoH copy, so it also needs to go via
+                // the device handle from the context.
+                let result: Vec<f64> = self.ctx.device().dtoh_sync_copy(&out_buf)?;
                 Ok(result)
             }
         }
