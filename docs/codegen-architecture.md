@@ -113,6 +113,27 @@ impl_convert_for!(u8, f32, "8u", "32f", {
 | SwapChannels | `nppiSwapChannels_` | C4 (src) | `C4C3R` | — | `SRC+STEP, DST+STEP, SIZE, CHANNEL_ORDER` | No |
 | Mean | `nppiMean_` | C1, C3, C4 | — | `nppiMeanGetBufferHostSize_` | `SRC+STEP, SIZE, SCRATCH_BUF, OUT_SCALAR` | No |
 | Convert | `nppiConvert_` | C1, C3, C4 | — | — | `SRC+STEP, DST+STEP, SIZE` | Yes |
+| Normalize | `nppiConvert_` (reused) | C1, C3, C4 | — | — | `SRC+STEP, DST+STEP, SIZE` | Yes (dual-type, reused from Convert) |
+
+## Normalize: convert-then-scale
+
+Unlike the other four families, **Normalize does not use `FamilyDescriptor` or
+`generate_for_family()`**. It has its own standalone generator
+(`generate_normalize_impls`) in `gen_impls.rs` because of its unique structure:
+
+- Normalize is a **composite** operation: `nppiConvert_*` (to f32) followed by
+  `nppiMulC_32f_*_Ctx` (in-place scale).
+- The generator filters the **existing** Convert fixture (`nppiConvert_symbols.txt`)
+  to pairs where `dst_token == "32f"` and the source has a defined integer
+  denominator. No separate fixture is needed.
+- The `impl_normalize_for!` macro has a **trivial signature**:
+  `($src_ty, $denominator, $src_token)` — no channel arms or symbol tuples.
+  The convert step calls `self.convert(dst)?` via the `ConvertTo` trait; the
+  MulC scale step is hardcoded inside the macro body using
+  `nppiMulC_32f_C*R_Ctx`, dispatching on `dst.channels()` with explicit
+  per-arm arrays.
+- The scale denominator is the source type's maximum positive representable
+  value (Option B, resolved): 255 for `u8`, 65535 for `u16`, 32767 for `i16`.
 
 ## How to add a new family
 

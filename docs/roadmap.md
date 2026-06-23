@@ -239,18 +239,58 @@ rounding-mode Convert variants are the next step.
 
 ---
 
-## F5.2 — Normalize codegen + rounding-mode ConvertTo
+## F5.2 — Normalize codegen across the integer→f32 alphabet *(complete)*
 
-**What:** (1) Generalize `Normalize` across the alphabet — pulls in the `nppiMulC_`
-family, per-source-type scale constants (`1/255`, `1/65535`, …), and float-source
-handling. (2) Add the rounding-mode `nppiConvert_*` variants (the 20 `NppRoundMode` +
-17 scaled functions), which requires a **public API change** to the `ConvertTo` trait
-(a rounding parameter).
+**What:** Generalized the hand-written `Normalize<f32> for CudaImage<u8>` to
+**every integer-source type for which NPP provides a non-rounding
+`nppiConvert_*_Ctx → f32` symbol**, using a standalone generator that filters
+the `nppiConvert_symbols.txt` fixture. No public API change. The scale constant
+is the source type's maximum positive representable value (255 for u8,
+65535 for u16, 32767 for i16). The hand-written impl was removed in favour of
+the generated one; `convert_ops.rs` is retained as a documented placeholder.
 
-**Why deferred:** F5.1 chose the no-rounding `ConvertTo` group to stay shippable
-without an API change. Each piece is ~the size of F5.1.
+**Key architectural decision:** Unlike the other four generated families,
+Normalize does NOT use `FamilyDescriptor`/`generate_for_family()`. The
+generator (`generate_normalize_impls`) is standalone; the convert step
+delegates to the `ConvertTo` trait (not raw FFI); the three `MulC_32f` symbols
+are hardcoded in the macro body. This avoids the `[c; $ch]` compilation bug
+and the fragile `dual_type` hijacking.
 
-**Dependencies:** F5.1 (establishes the dual-type codegen path), F1/F2.
+**Supported source types:** `u8`, `u16`, `i16` (bounded by the F5.1 Convert
+fixture; expands automatically on regeneration if new `→ f32` pairs appear).
+
+**Committed artifacts added by F5.2:**
+- `npp/src/normalize_macros.rs` — `impl_normalize_for!` macro
+- `npp/src/normalize_generated.rs` — generated invocations (byte-identity guarded)
+- `npp-codegen/src/gen_impls.rs` — `normalize_scale_denominator` helper +
+  `generate_normalize_impls()` function
+- `npp-codegen/examples/gen_normalize_impls.rs` — generator example
+- `npp/tests/golden_normalize_16u32f.rs` — golden test for u16→f32
+- `npp/tests/golden_normalize_16s32f.rs` — golden test for i16→f32
+
+**Deleted:** hand-written `impl Normalize<f32> for CudaImage<u8>` from
+`convert_ops.rs`.
+
+**Point forward to F5.3:** The rounding-mode `ConvertTo` variants (20
+`NppRoundMode` + 17 scaled functions) require a breaking API change and are
+split to F5.3.
+
+---
+
+## F5.3 — Rounding-mode ConvertTo (API change) *(deferred)*
+
+**What:** Add the rounding-mode `nppiConvert_*` variants — the 20
+`NppRoundMode` functions (shape `SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode`)
+and the 17 scaled functions (shape `SRC+STEP, DST+STEP, SIZE,
+MISC:NppRoundMode, CONST_SCALAR`) — which requires a **breaking public API
+change** to the `ConvertTo` trait (a rounding-mode parameter, and a scale-factor
+parameter for the scaled group).
+
+**Why deferred:** F5.2 chose the additive Normalize half to stay shippable
+without an API change; the rounding half is a self-contained API-breaking unit
+~the size of F5.1.
+
+**Dependencies:** F5.1 (dual-type codegen path) and F5.2 (Normalize precedent).
 
 ---
 
@@ -390,7 +430,7 @@ patterns being mature enough to reuse the approach.
 ## Suggested rough sequencing
 
 ```
-M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops) ──> F5.1 (ConvertTo codegen) ──> F5.2 (Normalize codegen + rounding ConvertTo)
+M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops) ──> F5.1 (ConvertTo codegen) ──> F5.2 (Normalize codegen) ──> F5.3 (rounding-mode ConvertTo)
      │      │                              └────────────────> F6 (golden tests, grows with ops)
      ├─> F3 (image-rs boundary)           [independent]
      ├─> F4 (graphynx boundary)           [independent]
