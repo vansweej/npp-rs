@@ -435,6 +435,46 @@ mod tests {
     }
 
     #[test]
+    fn convert_generated_is_byte_identical() {
+        // Read the committed generated file
+        let committed_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("npp")
+            .join("src")
+            .join("convert_generated.rs");
+        let committed = fs::read_to_string(&committed_path)
+            .expect("failed to read committed convert_generated.rs");
+
+        // Generate from the fixture
+        let fixture = fixture_path("nppiConvert_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        let generated = generate_for_family(&CONVERT_FAMILY, &symbols);
+
+        // Show diff if not identical
+        if committed != generated {
+            eprintln!(
+                "Committed length: {}, Generated length: {}",
+                committed.len(),
+                generated.len()
+            );
+            for (i, (cl, gl)) in committed.lines().zip(generated.lines()).enumerate() {
+                if cl != gl {
+                    eprintln!("First difference at line {}:", i + 1);
+                    eprintln!("  Committed: {:?}", cl);
+                    eprintln!("  Generated: {:?}", gl);
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            committed, generated,
+            "convert_generated.rs must be byte-identical"
+        );
+    }
+
+    #[test]
     fn swap_channels_corpus_is_generatable() {
         // Verify SwapChannels fixture can be read and generates valid output
         let fixture = fixture_path("nppiSwapChannels_symbols.txt");
