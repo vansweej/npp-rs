@@ -5,7 +5,7 @@
 //! a fixture path, then emits the `impl_*_for!` invocations that should be
 //! pasted into `npp/src/*_generated.rs`.
 
-use crate::classify::classify;
+use crate::classify::{classify, classify_convert};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,6 +33,10 @@ pub struct FamilyDescriptor {
     /// function. When set, the generator emits `($mean_sym, $buffer_sym)` tuples
     /// instead of bare symbol names. `None` for standard single-call ops.
     pub get_buffer_host_size_prefix: Option<&'static str>,
+    /// When true, the family carries two type tokens (src+dst); the generator
+    /// uses `classify_convert` and emits `impl_*_for!($src_ty, $dst_ty, "$src_tok",
+    /// "$dst_tok", { … })`.
+    pub dual_type: bool,
 }
 
 /// Descriptor for the NPP Resize family.
@@ -52,6 +56,7 @@ pub static RESIZE_FAMILY: FamilyDescriptor = FamilyDescriptor {
         "use npp_sys::{NppiRect, NppiSize};",
     ],
     get_buffer_host_size_prefix: None,
+    dual_type: false,
 };
 
 /// Descriptor for the NPP SwapChannels family.
@@ -71,6 +76,7 @@ pub static SWAP_CHANNELS_FAMILY: FamilyDescriptor = FamilyDescriptor {
         "use npp_sys::NppiSize;",
     ],
     get_buffer_host_size_prefix: None,
+    dual_type: false,
 };
 
 /// Descriptor for the NPP Mean family (two-call dance with scratch buffer).
@@ -90,6 +96,30 @@ pub static MEAN_FAMILY: FamilyDescriptor = FamilyDescriptor {
         "use npp_sys::NppiSize;",
     ],
     get_buffer_host_size_prefix: Some("nppiMeanGetBufferHostSize_"),
+    dual_type: false,
+};
+
+/// Descriptor for the NPP Convert family (dual-type, no-rounding shape only).
+///
+/// Covers the **no-rounding** Convert shape (`SRC+STEP, DST+STEP, SIZE`) **only**.
+/// Rounding-mode Convert variants (`NppRoundMode`) are **deferred to F5.2**.
+pub static CONVERT_FAMILY: FamilyDescriptor = FamilyDescriptor {
+    npp_prefix: "nppiConvert_",
+    accepted_channels: &[1, 3, 4],
+    custom_variants: &[],
+    macro_name: "impl_convert_for",
+    rust_macro_path: "impl_convert_for",
+    expected_shape: "SRC+STEP, DST+STEP, SIZE",
+    skip_16f: true,
+    use_statements: &[
+        "use crate::error::{check_status, NppError};",
+        "use crate::image::CudaImage;",
+        "use crate::imageops::ConvertTo;",
+        "use crate::impl_convert_for;",
+        "use npp_sys::NppiSize;",
+    ],
+    get_buffer_host_size_prefix: None,
+    dual_type: true,
 };
 
 /// Map NPP type token to Rust type.
@@ -123,29 +153,9 @@ pub fn read_fixture(path: &Path) -> (Vec<String>, String) {
 /// Returns the generated Rust source as a string.
 pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> String {
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified = classify(
-        &symbol_refs,
-        family.npp_prefix,
-        family.accepted_channels,
-        family.custom_variants,
-    );
 
-    // Group by type_token, collecting (channel, variant) pairs.
-    let mut groups: BTreeMap<&str, BTreeMap<u8, String>> = BTreeMap::new();
-    for cs in &classified {
-        if family.skip_16f && cs.type_token == "16f" {
-            continue;
-        }
-        groups
-            .entry(&cs.type_token)
-            .or_default()
-            .entry(cs.channels)
-            .or_insert_with(|| cs.variant.clone());
-    }
-
-    let mut output = String::new();
-
-    // Extract the family name from the prefix (e.g., "Resize" from "nppiResize_")
+    // Extract the family name from the prefix (e.g., "Resize" from "nppiResize_"
+    // or "Convert" from "nppiConvert_")
     let family_name = family
         .npp_prefix
         .strip_prefix("nppi")
@@ -153,6 +163,7 @@ pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> Str
         .unwrap_or("");
 
     // Emit header guard comment
+    let mut output = String::new();
     output.push_str("//! GENERATED — re-run `cargo run --example gen_");
     output.push_str(&family_name.to_lowercase());
     output.push_str("_impls` on CUDA bump.\n");
@@ -168,34 +179,109 @@ pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> Str
 
     let mut macro_blocks: Vec<String> = Vec::new();
 
-    for (token, ch_variants) in &groups {
-        let rty = match npp_type_to_rust(token) {
-            Some(t) => t,
-            None => continue,
-        };
+    if family.dual_type {
+        // ── Dual-type branch (Convert family) ──
+        let classified = classify_convert(&symbol_refs);
 
-        let mut block = String::new();
-        block.push_str(&format!(
-            "{}!({}, \"{}\", {{\n",
-            family.rust_macro_path, rty, token
-        ));
-        for ch in ch_variants.keys() {
-            let variant = &ch_variants[ch];
-            let sym = format!("npp_sys::nppi{}_{}_{}", family_name, token, variant);
-            if let Some(buf_prefix) = family.get_buffer_host_size_prefix {
-                // Two-call dance: emit (mean_sym, buffer_sym) tuple
-                let buf_prefix_clean = buf_prefix
-                    .strip_prefix("nppi")
-                    .and_then(|s| s.strip_suffix("_"))
-                    .unwrap_or("");
-                let buffer_sym = format!("npp_sys::nppi{}_{}_{}", buf_prefix_clean, token, variant);
-                block.push_str(&format!("        {} => ({}, {}),\n", ch, sym, buffer_sym));
-            } else {
+        // Group by (type_token, dst_type_token), collecting (channel, variant) pairs.
+        let mut dual_groups: BTreeMap<(&str, &str), BTreeMap<u8, String>> = BTreeMap::new();
+        for cs in &classified {
+            let dst_tok = cs
+                .dst_type_token
+                .as_deref()
+                .expect("dual_type family must have dst_type_token");
+
+            // skip_16f: check both src and dst tokens
+            if family.skip_16f && (cs.type_token == "16f" || dst_tok == "16f") {
+                continue;
+            }
+
+            dual_groups
+                .entry((&cs.type_token, dst_tok))
+                .or_default()
+                .entry(cs.channels)
+                .or_insert_with(|| cs.variant.clone());
+        }
+
+        for ((src_token, dst_token), ch_variants) in &dual_groups {
+            let src_rty = match npp_type_to_rust(src_token) {
+                Some(t) => t,
+                None => continue,
+            };
+            let dst_rty = match npp_type_to_rust(dst_token) {
+                Some(t) => t,
+                None => continue,
+            };
+
+            let mut block = String::new();
+            block.push_str(&format!(
+                "{}!({}, {}, \"{}\", \"{}\", {{\n",
+                family.rust_macro_path, src_rty, dst_rty, src_token, dst_token
+            ));
+            for ch in ch_variants.keys() {
+                let variant = &ch_variants[ch];
+                // variant already includes _Ctx (from classify_convert's _Ctx preference)
+                let sym = format!(
+                    "npp_sys::nppiConvert_{}{}_{}",
+                    src_token, dst_token, variant
+                );
                 block.push_str(&format!("        {} => {},\n", ch, sym));
             }
+            block.push_str("});");
+            macro_blocks.push(block);
         }
-        block.push_str("});");
-        macro_blocks.push(block);
+    } else {
+        // ── Single-type branch (Resize, SwapChannels, Mean) ──
+        let classified = classify(
+            &symbol_refs,
+            family.npp_prefix,
+            family.accepted_channels,
+            family.custom_variants,
+        );
+
+        // Group by type_token, collecting (channel, variant) pairs.
+        let mut groups: BTreeMap<&str, BTreeMap<u8, String>> = BTreeMap::new();
+        for cs in &classified {
+            if family.skip_16f && cs.type_token == "16f" {
+                continue;
+            }
+            groups
+                .entry(&cs.type_token)
+                .or_default()
+                .entry(cs.channels)
+                .or_insert_with(|| cs.variant.clone());
+        }
+
+        for (token, ch_variants) in &groups {
+            let rty = match npp_type_to_rust(token) {
+                Some(t) => t,
+                None => continue,
+            };
+
+            let mut block = String::new();
+            block.push_str(&format!(
+                "{}!({}, \"{}\", {{\n",
+                family.rust_macro_path, rty, token
+            ));
+            for ch in ch_variants.keys() {
+                let variant = &ch_variants[ch];
+                let sym = format!("npp_sys::nppi{}_{}_{}", family_name, token, variant);
+                if let Some(buf_prefix) = family.get_buffer_host_size_prefix {
+                    // Two-call dance: emit (mean_sym, buffer_sym) tuple
+                    let buf_prefix_clean = buf_prefix
+                        .strip_prefix("nppi")
+                        .and_then(|s| s.strip_suffix("_"))
+                        .unwrap_or("");
+                    let buffer_sym =
+                        format!("npp_sys::nppi{}_{}_{}", buf_prefix_clean, token, variant);
+                    block.push_str(&format!("        {} => ({}, {}),\n", ch, sym, buffer_sym));
+                } else {
+                    block.push_str(&format!("        {} => {},\n", ch, sym));
+                }
+            }
+            block.push_str("});");
+            macro_blocks.push(block);
+        }
     }
 
     // Join macro blocks with a blank line between them, no trailing blank line
@@ -240,12 +326,16 @@ pub fn validate_symbols_against_bindings(
     }
 
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified = classify(
-        &symbol_refs,
-        family.npp_prefix,
-        family.accepted_channels,
-        family.custom_variants,
-    );
+    let classified: Vec<crate::classify::ClassifiedSymbol> = if family.dual_type {
+        crate::classify::classify_convert(&symbol_refs)
+    } else {
+        classify(
+            &symbol_refs,
+            family.npp_prefix,
+            family.accepted_channels,
+            family.custom_variants,
+        )
+    };
 
     let mut mismatches = Vec::new();
 
