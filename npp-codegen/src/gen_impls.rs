@@ -362,6 +362,122 @@ pub fn validate_symbols_against_bindings(
     mismatches
 }
 
+/// Return the f32 normalization denominator for an NPP integer type token.
+///
+/// The denominator is the maximum positive representable value for the type,
+/// such that calling `MulC` with `1/denominator` maps the type's maximum
+/// positive value to exactly `1.0`:
+///
+/// | Token | Type   | BITS | Formula         | Value            |
+/// |-------|--------|------|-----------------|------------------|
+/// | 8u    | `u8`   | 8    | `2^8 - 1`       | 255              |
+/// | 8s    | `i8`   | 8    | `2^(8-1) - 1`   | 127              |
+/// | 16u   | `u16`  | 16   | `2^16 - 1`      | 65535            |
+/// | 16s   | `i16`  | 16   | `2^(16-1) - 1`  | 32767            |
+/// | 32u   | `u32`  | 32   | `2^32 - 1`      | 4294967295       |
+/// | 32s   | `i32`  | 32   | `2^(32-1) - 1`  | 2147483647       |
+/// | 32f   | `f32`  | —    | —               | `None` (excluded)|
+/// | 64f   | `f64`  | —    | —               | `None` (excluded)|
+///
+/// Float sources are excluded because there is no canonical denominator —
+/// they are already in floating-point range. These tokens are returned as
+/// `f64` to avoid precision loss in the internal lookup; the generator
+/// formats them as `{val}_f32` string literals for the emitted source.
+///
+/// ## Precision note (forward-looking)
+///
+/// The u32 and i32 denominators (`4294967295`, `2147483647`) are **not exactly
+/// representable as f32**, and emitting them as `4294967295.0_f32` would trigger
+/// `clippy::excessive_precision`. They are included in this helper for
+/// completeness but are **not emitted today** — only u8/u16/i16 have Convert→f32
+/// symbols. If a future CUDA bump adds u32→f32 or i32→f32 Convert symbols, the
+/// generator must emit those denominators as a `const` cast (`u32::MAX as f32`)
+/// rather than a decimal float literal.
+pub fn normalize_scale_denominator(token: &str) -> Option<f64> {
+    match token {
+        "8u" => Some(255.0),
+        "8s" => Some(127.0),
+        "16u" => Some(65535.0),
+        "16s" => Some(32767.0),
+        "32u" => Some(4_294_967_295.0),
+        "32s" => Some(2_147_483_647.0),
+        "32f" | "64f" => None,
+        _ => None,
+    }
+}
+
+/// Generate `impl_normalize_for!` invocations for all integer→f32 pairs.
+///
+/// Reads the Convert fixture (same symbols as `CONVERT_FAMILY`), classifies
+/// them, filters to pairs where `dst_token == "32f"` and the source has a
+/// defined `normalize_scale_denominator`, and emits one invocation per
+/// source type. The macro signature is trivially self-contained — no channel
+/// arms or symbol tuples needed because the convert step delegates to the
+/// `ConvertTo` trait and the MulC symbols are hardcoded in the macro body.
+///
+/// Unlike the other four families, this does NOT use `generate_for_family()`.
+/// The Normalize generator has a completely different emit shape.
+pub fn generate_normalize_impls(symbols: &[String]) -> String {
+    let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
+    let classified = classify_convert(&symbol_refs);
+
+    // Build a BTreeMap<src_token, Option<f64>> for deterministic ordering.
+    let mut normalize_map: BTreeMap<&str, f64> = BTreeMap::new();
+    for cs in &classified {
+        let dst_tok = match cs.dst_type_token.as_deref() {
+            Some(t) => t,
+            None => continue,
+        };
+        // Filter to dst == "32f" only
+        if dst_tok != "32f" {
+            continue;
+        }
+        // Skip 16f
+        if cs.type_token == "16f" || dst_tok == "16f" {
+            continue;
+        }
+        // Map Rust type
+        if npp_type_to_rust(&cs.type_token).is_none() {
+            continue;
+        }
+        // Check denominator
+        let denom = match normalize_scale_denominator(&cs.type_token) {
+            Some(d) => d,
+            None => continue,
+        };
+        normalize_map.entry(&cs.type_token).or_insert(denom);
+    }
+
+    // Emit header
+    let mut output = String::new();
+    output.push_str(
+        "//! GENERATED — re-run `cargo run --example gen_normalize_impls` on CUDA bump.\n",
+    );
+    output.push_str(
+        "//! This file is **committed** (like `resize_caps.rs`), not gitignored.\n",
+    );
+    output.push('\n');
+
+    // Emit use statements
+    output.push_str("use crate::error::{check_status, NppError};\n");
+    output.push_str("use crate::image::CudaImage;\n");
+    output.push_str("use crate::imageops::{ConvertTo, Normalize};\n");
+    output.push_str("use crate::impl_normalize_for;\n");
+    output.push_str("use cudarc::driver::DevicePtrMut;\n");
+    output.push_str("use npp_sys::NppiSize;\n");
+    output.push_str("use std::mem::size_of;\n");
+    output.push('\n');
+
+    // Emit invocations in sort order
+    for (token, denom) in &normalize_map {
+        let rty = npp_type_to_rust(token).expect("already validated above");
+        let denom_str = format!("{denom}_f32");
+        output.push_str(&format!("impl_normalize_for!({rty}, {denom_str}, \"{token}\");\n"));
+    }
+
+    output
+}
+
 /// Find the path to bindings.rs in the build directory.
 pub fn find_bindings_rs() -> Option<PathBuf> {
     // Try relative to CARGO_MANIFEST_DIR
@@ -392,6 +508,45 @@ mod tests {
             .join("tests")
             .join("fixtures")
             .join(name)
+    }
+
+    #[test]
+    fn normalize_denominators() {
+        assert_eq!(normalize_scale_denominator("8u"), Some(255.0));
+        assert_eq!(normalize_scale_denominator("16u"), Some(65535.0));
+        assert_eq!(normalize_scale_denominator("16s"), Some(32767.0));
+        assert_eq!(normalize_scale_denominator("8s"), Some(127.0));
+        assert_eq!(normalize_scale_denominator("32f"), None);
+        assert_eq!(normalize_scale_denominator("64f"), None);
+        assert_eq!(normalize_scale_denominator("zzz"), None);
+    }
+
+    #[test]
+    fn generate_normalize_from_fixture() {
+        let fixture = fixture_path("nppiConvert_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        assert!(!symbols.is_empty(), "Convert fixture must not be empty");
+        let generated = generate_normalize_impls(&symbols);
+        assert!(!generated.is_empty(), "generated output must not be empty");
+
+        // Must contain u8→f32 (8u has denominator 255)
+        assert!(generated.contains("impl_normalize_for!(u8, 255.0_f32, \"8u\");"));
+        // Must contain u16→f32
+        assert!(generated.contains("impl_normalize_for!(u16, 65535.0_f32, \"16u\");"));
+        // Must contain i16→f32
+        assert!(generated.contains("impl_normalize_for!(i16, 32767.0_f32, \"16s\");"));
+        // Must NOT contain non-f32 destinations (e.g. u16→i32)
+        assert!(!generated.contains("impl_normalize_for!(u16,"), "u16 should only appear with 32f dst");
+        // Must NOT contain 16f / f16
+        assert!(!generated.contains("16f"));
+        assert!(!generated.contains("f16"));
+        // Must NOT contain float source types
+        assert!(!generated.contains("impl_normalize_for!(f32"));
+        assert!(!generated.contains("impl_normalize_for!(f64"));
+        // Must include a ConvertTo import (macro body calls self.convert() via trait)
+        assert!(generated.contains("use crate::imageops::ConvertTo;"));
+        // Must include DevicePtrMut (macro body extracts dst pointer)
+        assert!(generated.contains("use cudarc::driver::DevicePtrMut;"));
     }
 
     #[test]
