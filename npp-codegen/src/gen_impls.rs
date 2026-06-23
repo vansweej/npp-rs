@@ -468,7 +468,7 @@ pub fn generate_normalize_impls(symbols: &[String]) -> String {
     // Emit invocations in sort order
     for (token, denom) in &normalize_map {
         let rty = npp_type_to_rust(token).expect("already validated above");
-        let denom_str = format!("{denom}_f32");
+        let denom_str = format!("{denom:.1}_f32");
         output.push_str(&format!("impl_normalize_for!({rty}, {denom_str}, \"{token}\");\n"));
     }
 
@@ -532,8 +532,6 @@ mod tests {
         assert!(generated.contains("impl_normalize_for!(u16, 65535.0_f32, \"16u\");"));
         // Must contain i16→f32
         assert!(generated.contains("impl_normalize_for!(i16, 32767.0_f32, \"16s\");"));
-        // Must NOT contain non-f32 destinations (e.g. u16→i32)
-        assert!(!generated.contains("impl_normalize_for!(u16,"), "u16 should only appear with 32f dst");
         // Must NOT contain 16f / f16
         assert!(!generated.contains("16f"));
         assert!(!generated.contains("f16"));
@@ -541,9 +539,49 @@ mod tests {
         assert!(!generated.contains("impl_normalize_for!(f32"));
         assert!(!generated.contains("impl_normalize_for!(f64"));
         // Must include a ConvertTo import (macro body calls self.convert() via trait)
-        assert!(generated.contains("use crate::imageops::ConvertTo;"));
+        assert!(generated.contains("use crate::imageops::{ConvertTo, Normalize};"));
         // Must NOT include DevicePtrMut (macro uses fully-qualified path)
         assert!(!generated.contains("use cudarc::driver::DevicePtrMut;"));
+    }
+
+    #[test]
+    fn normalize_generated_is_byte_identical() {
+        // Read the committed generated file
+        let committed_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("npp")
+            .join("src")
+            .join("normalize_generated.rs");
+        let committed = fs::read_to_string(&committed_path)
+            .expect("failed to read committed normalize_generated.rs");
+
+        // Generate from the fixture
+        let fixture = fixture_path("nppiConvert_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        let generated = generate_normalize_impls(&symbols);
+
+        // Show diff if not identical
+        if committed != generated {
+            eprintln!(
+                "Committed length: {}, Generated length: {}",
+                committed.len(),
+                generated.len()
+            );
+            for (i, (cl, gl)) in committed.lines().zip(generated.lines()).enumerate() {
+                if cl != gl {
+                    eprintln!("First difference at line {}:", i + 1);
+                    eprintln!("  Committed: {:?}", cl);
+                    eprintln!("  Generated: {:?}", gl);
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            committed, generated,
+            "normalize_generated.rs must be byte-identical"
+        );
     }
 
     #[test]
