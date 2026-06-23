@@ -1,0 +1,49 @@
+# No-rounding Convert symbols from CUDA 12.9 — regenerate on CUDA bump.
+# Shape: SRC+STEP, DST+STEP, SIZE (no NppRoundMode parameter).
+# Rounding-mode variants (NppRoundMode) are tracked under F5.2.
+# 16f is excluded from the safe layer.
+#
+# This is a DRAFT — validated against bindings.rs in Phase 4 Step 1.
+# Do not invent symbols; correct the fixture if a symbol is absent.
+nppiConvert_8u16u_C1R
+nppiConvert_8u16u_C1R_Ctx
+nppiConvert_8u16u_C3R
+nppiConvert_8u16u_C3R_Ctx
+nppiConvert_8u16u_C4R
+nppiConvert_8u16u_C4R_Ctx
+nppiConvert_8u32f_C1R
+nppiConvert_8u32f_C1R_Ctx
+nppiConvert_8u32f_C3R
+nppiConvert_8u32f_C3R_Ctx
+nppiConvert_8u32f_C4R
+nppiConvert_8u32f_C4R_Ctx
+nppiConvert_16u32f_C1R
+nppiConvert_16u32f_C1R_Ctx
+nppiConvert_16u32f_C3R
+nppiConvert_16u32f_C3R_Ctx
+nppiConvert_16u32f_C4R
+nppiConvert_16u32f_C4R_Ctx
+nppiConvert_8u32s_C1R
+nppiConvert_8u32s_C1R_Ctx
+nppiConvert_8u32s_C3R
+nppiConvert_8u32s_C3R_Ctx
+nppiConvert_8u32s_C4R
+nppiConvert_8u32s_C4R_Ctx
+nppiConvert_16s32f_C1R
+nppiConvert_16s32f_C1R_Ctx
+nppiConvert_16s32f_C3R
+nppiConvert_16s32f_C3R_Ctx
+nppiConvert_16s32f_C4R
+nppiConvert_16s32f_C4R_Ctx
+nppiConvert_8u16s_C1R
+nppiConvert_8u16s_C1R_Ctx
+nppiConvert_8u16s_C3R
+nppiConvert_8u16s_C3R_Ctx
+nppiConvert_8u16s_C4R
+nppiConvert_8u16s_C4R_Ctx
+nppiConvert_16u32s_C1R
+nppiConvert_16u32s_C1R_Ctx
+nppiConvert_16u32s_C3R
+nppiConvert_16u32s_C3R_Ctx
+nppiConvert_16u32s_C4R
+nppiConvert_16u32s_C4R_Ctx

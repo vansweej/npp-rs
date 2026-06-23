@@ -549,4 +549,48 @@ mod tests {
         assert!(generated.contains("impl_resize_for!(u8, \"8u\", {"));
         assert!(generated.contains("impl_resize_for!(f32, \"32f\", {"));
     }
+
+    #[test]
+    fn generate_convert_from_fixture() {
+        let fixture = fixture_path("nppiConvert_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        assert!(!symbols.is_empty(), "Convert fixture must not be empty");
+        let generated = generate_for_family(&CONVERT_FAMILY, &symbols);
+        assert!(!generated.is_empty(), "generated output must not be empty");
+
+        // Verify dual-type invocation for u8 -> f32
+        assert!(generated.contains("impl_convert_for!(u8, f32, \"8u\", \"32f\", {"));
+        // Verify integer-widening invocation
+        assert!(generated.contains("impl_convert_for!(u8, u16, \"8u\", \"16u\", {"));
+        // Verify _Ctx symbol paths (B2 guard)
+        assert!(generated.contains("npp_sys::nppiConvert_8u32f_C3R_Ctx"));
+        // Verify no 16f / f16 tokens (skip_16f)
+        assert!(!generated.contains("16f"));
+        assert!(!generated.contains("f16"));
+    }
+
+    #[test]
+    fn convert_syn_shape_check() {
+        // Verify that Convert symbols have the expected shape (SRC+STEP, DST+STEP, SIZE)
+        let bindings = find_bindings_rs();
+        if let Some(bindings_path) = bindings {
+            let fixture = fixture_path("nppiConvert_symbols.txt");
+            let (symbols, _) = read_fixture(&fixture);
+
+            let mismatches =
+                validate_symbols_against_bindings(&CONVERT_FAMILY, &symbols, &bindings_path);
+            if !mismatches.is_empty() {
+                for m in &mismatches {
+                    eprintln!("Mismatch: {}", m);
+                }
+            }
+            assert!(
+                mismatches.is_empty(),
+                "All Convert symbols must match expected shape; {} mismatches found",
+                mismatches.len()
+            );
+        } else {
+            eprintln!("bindings.rs not found — skipping syn shape check");
+        }
+    }
 }
