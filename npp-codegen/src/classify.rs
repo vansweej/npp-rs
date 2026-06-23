@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
 /// A classified NPP symbol that fits the simple type×channel grid.
+///
+/// For dual-type families (e.g. Convert), `dst_type_token` holds the destination
+/// NPP element-type token; for single-type families it is `None`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassifiedSymbol {
     /// The raw FFI symbol, e.g. "nppiResize_8u_C3R".
@@ -9,6 +12,9 @@ pub struct ClassifiedSymbol {
     pub op: String,
     /// NPP element-type token, e.g. "8u", "32f".
     pub type_token: String,
+    /// The destination NPP element-type token for dual-type families (e.g. Convert);
+    /// `None` for single-type families.
+    pub dst_type_token: Option<String>,
     /// Channel count (1, 3, or 4).
     pub channels: u8,
     /// Full variant suffix (e.g., "C3R", "C4R", "C4C3R").
@@ -124,6 +130,7 @@ pub fn classify(
             raw,
             op: family.to_string(),
             type_token,
+            dst_type_token: None,
             channels,
             variant,
         });
@@ -144,6 +151,143 @@ pub fn classify_resize(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
 /// Convenience wrapper for the SwapChannels family (C4C3R: 4→3 conversion).
 pub fn classify_swap_channels(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
     classify(symbols, "nppiSwapChannels_", &[4], &[(4, "C4C3R")])
+}
+
+/// The set of valid NPP element-type tokens for dual-type classification.
+///
+/// Ordered longest-first to prefer greedy matches during the two-token split.
+/// `16f` is excluded (the safe layer disables the `half` crate).
+const NPP_TYPE_TOKENS: &[&str] = &["16u", "16s", "32u", "32s", "32f", "64f", "8u", "8s"];
+
+/// Classify NPP Convert symbols using the dual-type two-token split algorithm.
+///
+/// Convert symbols have the form `nppiConvert_{SRC}{DST}_{VARIANT}`, where the
+/// segment between `nppiConvert_` and the first `_` is a concatenation of two
+/// NPP type tokens (e.g. `8u32f` = src `8u` + dst `32f`).
+///
+/// # Two-token split strategy
+///
+/// The token segment is **not** prefix-free (e.g. `16u` begins with `16`, `8u`
+/// begins with `8`, etc.), so a naive left-to-right scan is wrong. Instead:
+///
+/// 1. Let `TOKENS = ["8u","8s","16u","16s","32u","32s","32f","64f"]` (16f excluded).
+/// 2. For the segment between `nppiConvert_` and the first `_`, iterate every
+///    split point `k` where `1 <= k < segment.len()`.
+/// 3. A split is valid iff `segment[..k] ∈ TOKENS` **and** `segment[k..] ∈ TOKENS`.
+/// 4. Collect all valid splits.
+/// 5. **Exactly one** valid split → use the `(src, dst)` pair.
+/// 6. **Zero** valid splits → reject the symbol (skip it silently).
+/// 7. **Two or more** valid splits → this is a classifier ambiguity bug;
+///    `debug_assert!` panics so it surfaces immediately at build time.
+///
+/// # Variant handling
+///
+/// Accepts only standard channel variants `C1R`, `C3R`, `C4R` and their `_Ctx`
+/// forms. When both `C1R` and `C1R_Ctx` (etc.) exist for the same `(src, dst,
+/// channels)` triple, the `_Ctx` variant is preferred — and `variant` stores
+/// the suffixed form (e.g. `"C3R_Ctx"`), identical to how `classify()` handles
+/// the `_Ctx` pivot.
+///
+/// `16f` is excluded from the token list because the safe layer disables the
+/// `half` crate, making `f16` an unsupported pixel type.
+pub fn classify_convert(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
+    const PREFIX: &str = "nppiConvert_";
+    const ACCEPTED_CHS: &[u8] = &[1, 3, 4];
+
+    // First pass: collect all valid candidates grouped by (src, dst, channels)
+    let mut candidates: std::collections::HashMap<
+        (String, String, u8),
+        Vec<(String, String)>,
+    > = std::collections::HashMap::new();
+
+    for raw in symbols {
+        let s = match raw.strip_prefix(PREFIX) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Reject symbols with extra keywords after the prefix
+        if !s.starts_with(|c: char| c.is_ascii_digit()) {
+            continue; // e.g. "nppiConvertScale_…" — not bare Convert
+        }
+
+        // Split the segment at the first '_' to get the two-token concatenation
+        let (token_segment, rest) = match s.split_once('_') {
+            Some((t, r)) => (t, r),
+            None => continue,
+        };
+
+        // ── Two-token split ──
+        let mut valid_splits: Vec<(usize, &str, &str)> = Vec::new();
+        // Iterate every split point k (1 .. len)
+        for k in 1..token_segment.len() {
+            let src_candidate = &token_segment[..k];
+            let dst_candidate = &token_segment[k..];
+            if NPP_TYPE_TOKENS.contains(&src_candidate)
+                && NPP_TYPE_TOKENS.contains(&dst_candidate)
+            {
+                valid_splits.push((k, src_candidate, dst_candidate));
+            }
+        }
+
+        let (src_token, dst_token) = match valid_splits.len() {
+            0 => continue, // zero valid splits: reject
+            1 => (valid_splits[0].1.to_string(), valid_splits[0].2.to_string()),
+            n => {
+                // Multiple valid splits: ambiguity bug
+                debug_assert!(
+                    false,
+                    "classify_convert: {} valid splits for symbol {} (segment: {}) — \
+                     two-token split ambiguity",
+                    n,
+                    raw,
+                    token_segment
+                );
+                // Fall through — reject in release builds when debug_assert is elided
+                continue;
+            }
+        };
+
+        // ── Variant matching ──
+        // Accept only C1R/C1R_Ctx, C3R/C3R_Ctx, C4R/C4R_Ctx
+        let (channels, variant_base): (u8, &str) = match rest {
+            "C1R" if ACCEPTED_CHS.contains(&1) => (1, "C1R"),
+            "C1R_Ctx" if ACCEPTED_CHS.contains(&1) => (1, "C1R_Ctx"),
+            "C3R" if ACCEPTED_CHS.contains(&3) => (3, "C3R"),
+            "C3R_Ctx" if ACCEPTED_CHS.contains(&3) => (3, "C3R_Ctx"),
+            "C4R" if ACCEPTED_CHS.contains(&4) => (4, "C4R"),
+            "C4R_Ctx" if ACCEPTED_CHS.contains(&4) => (4, "C4R_Ctx"),
+            _ => continue,
+        };
+
+        candidates
+            .entry((src_token.clone(), dst_token.clone(), channels))
+            .or_default()
+            .push((variant_base.to_string(), raw.to_string()));
+    }
+
+    // Second pass: for each (src, dst, channels) group, prefer _Ctx if it exists
+    let mut result = Vec::new();
+    for ((src_token, dst_token, channels), variants) in candidates {
+        let (variant, raw) =
+            if let Some((v, r)) = variants.iter().find(|(v, _)| v.ends_with("_Ctx")) {
+                (v.clone(), r.clone())
+            } else {
+                let (v, r) = &variants[0];
+                (v.clone(), r.clone())
+            };
+
+        result.push(ClassifiedSymbol {
+            raw,
+            op: "Convert".to_string(),
+            type_token: src_token,
+            dst_type_token: Some(dst_token),
+            channels,
+            variant,
+        });
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -416,5 +560,93 @@ mod tests {
             &[(4, "C4C3R")],
         );
         assert!(result.is_empty());
+    }
+
+    // ── Convert (dual-type) tests ──
+
+    #[test]
+    fn convert_accept_8u32f_c1r() {
+        let result = classify_convert(&["nppiConvert_8u32f_C1R"]);
+        assert_eq!(result.len(), 1, "expected one match");
+        assert_eq!(result[0].type_token, "8u");
+        assert_eq!(result[0].dst_type_token, Some("32f".to_string()));
+        assert_eq!(result[0].channels, 1);
+        assert_eq!(result[0].op, "Convert");
+        assert_eq!(result[0].raw, "nppiConvert_8u32f_C1R");
+    }
+
+    #[test]
+    fn convert_accept_8u16u_c3r_integer_widening() {
+        let result = classify_convert(&["nppiConvert_8u16u_C3R"]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].type_token, "8u");
+        assert_eq!(result[0].dst_type_token, Some("16u".to_string()));
+        assert_eq!(result[0].channels, 3);
+    }
+
+    #[test]
+    fn convert_accept_16u32f_c4r() {
+        let result = classify_convert(&["nppiConvert_16u32f_C4R"]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].type_token, "16u");
+        assert_eq!(result[0].dst_type_token, Some("32f".to_string()));
+        assert_eq!(result[0].channels, 4);
+    }
+
+    #[test]
+    fn convert_prefer_ctx_variant() {
+        // When both C1R and C1R_Ctx exist, prefer _Ctx
+        let result =
+            classify_convert(&["nppiConvert_8u32f_C1R", "nppiConvert_8u32f_C1R_Ctx"]);
+        assert_eq!(
+            result.len(),
+            1,
+            "should produce one result per (src, dst, channels) triple"
+        );
+        assert_eq!(result[0].variant, "C1R_Ctx", "should prefer _Ctx variant");
+        assert_eq!(result[0].raw, "nppiConvert_8u32f_C1R_Ctx");
+        assert_eq!(result[0].dst_type_token, Some("32f".to_string()));
+    }
+
+    #[test]
+    fn convert_reject_single_token() {
+        // nppiConvert_8u_C1R has only one token (8u) — zero valid splits
+        assert!(classify_convert(&["nppiConvert_8u_C1R"]).is_empty());
+    }
+
+    #[test]
+    fn convert_reject_16f_symbols() {
+        // 16f is excluded from the token list
+        assert!(
+            classify_convert(&["nppiConvert_32f16f_C1R"]).is_empty(),
+            "32f16f should be rejected (16f excluded)"
+        );
+        assert!(
+            classify_convert(&["nppiConvert_16f32f_C1R"]).is_empty(),
+            "16f32f should be rejected (16f excluded)"
+        );
+    }
+
+    #[test]
+    fn convert_reject_non_standard_variant() {
+        // C4C3R is not a standard channel variant for Convert
+        assert!(classify_convert(&["nppiConvert_8u32f_C4C3R"]).is_empty());
+    }
+
+    #[test]
+    fn convert_split_robustness_16u16u() {
+        // nppiConvert_16u16u_C1R must resolve to ("16u", "16u"), not some
+        // other split like ("1", "6u16u") or ("16", "u16u") etc.
+        let result = classify_convert(&["nppiConvert_16u16u_C1R"]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].type_token, "16u");
+        assert_eq!(result[0].dst_type_token, Some("16u".to_string()));
+        assert_eq!(result[0].channels, 1);
+    }
+
+    #[test]
+    fn convert_reject_invalid_prefix() {
+        // Wrong prefix should be rejected
+        assert!(classify_convert(&["nppiResize_8u_C3R"]).is_empty());
     }
 }
