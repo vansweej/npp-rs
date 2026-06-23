@@ -52,6 +52,10 @@ pub mod layout;
 pub mod mean_generated;
 /// Macro to generate `impl Mean` for image types.
 pub mod mean_macros;
+/// Generated `impl Normalize` for all NPP-supported integer→f32 pairs (committed artifact).
+pub mod normalize_generated;
+/// Macro to generate cross-type `impl Normalize` for image types.
+pub mod normalize_macros;
 /// GPU-probed (type, interpolation) support matrix for Resize.
 pub mod resize_caps;
 /// Generated `impl Resize` for all supported types (committed artifact).

@@ -463,9 +463,6 @@ pub fn generate_normalize_impls(symbols: &[String]) -> String {
     output.push_str("use crate::image::CudaImage;\n");
     output.push_str("use crate::imageops::{ConvertTo, Normalize};\n");
     output.push_str("use crate::impl_normalize_for;\n");
-    output.push_str("use cudarc::driver::DevicePtrMut;\n");
-    output.push_str("use npp_sys::NppiSize;\n");
-    output.push_str("use std::mem::size_of;\n");
     output.push('\n');
 
     // Emit invocations in sort order
@@ -545,8 +542,8 @@ mod tests {
         assert!(!generated.contains("impl_normalize_for!(f64"));
         // Must include a ConvertTo import (macro body calls self.convert() via trait)
         assert!(generated.contains("use crate::imageops::ConvertTo;"));
-        // Must include DevicePtrMut (macro body extracts dst pointer)
-        assert!(generated.contains("use cudarc::driver::DevicePtrMut;"));
+        // Must NOT include DevicePtrMut (macro uses fully-qualified path)
+        assert!(!generated.contains("use cudarc::driver::DevicePtrMut;"));
     }
 
     #[test]
