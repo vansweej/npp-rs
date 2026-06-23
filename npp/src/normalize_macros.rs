@@ -61,13 +61,9 @@
 #[macro_export]
 macro_rules! impl_normalize_for {
     ($src_ty:ty, $denominator:expr, $src_token:expr) => {
-        #[doc = concat!(
-                    "Normalize `CudaImage<",
-                    stringify!($src_ty),
-                    ">` to `CudaImage<f32>` using NPP type token `",
-                    $src_token,
-                    "` → `32f`. Dispatches on `dst.channels()` at runtime.",
-                )]
+        /// Normalize this image to `f32` using the generated ConvertTo impl and in-place MulC.
+        ///
+        /// Dispatches on `dst.channels()` at runtime for C1/C3/C4.
         ///
         /// # Implementation
         ///
