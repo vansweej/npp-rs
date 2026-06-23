@@ -204,17 +204,53 @@ for the NN-preprocessing use case.
 
 ---
 
-## F5.1 — Cross-type convert/normalize codegen
+## F5.1 — Cross-type ConvertTo codegen *(complete)*
 
-**What:** Generalize the hand-written `u8 → f32` ConvertTo/Normalize impls to cover
-the full `NppPixelType` alphabet and all supported channel counts via macro codegen
-(similar to F1/F2's Resize/SwapChannels/Mean pattern).
+**What:** Generalized the hand-written `u8 → f32` `ConvertTo` implementation to
+**every `(src, dst)` pixel-type pair that NPP provides a non-rounding `nppiConvert_*_Ctx`
+symbol for**, using the dual-type codegen pattern (fixture → `classify_convert` →
+`CONVERT_FAMILY` → `convert_generated.rs`). The hand-written `Normalize<f32> for
+CudaImage<u8>` stays. No public API change.
 
 **Why:** F5's hand-written slice validates the trait design and delivers the immediate
 NN-preprocessing need. F5.1 extends it to all types and channels, following the proven
-codegen pattern.
+codegen pattern — with the new dual-type mechanism (Convert carries two type tokens).
 
 **Dependencies:** F5 (establishes the trait and pattern), F1/F2 (macro infrastructure).
+
+**Committed artifacts added by F5.1:**
+- `npp-codegen/src/classify.rs` — `classify_convert()` dual-type classifier
+- `npp-codegen/tests/fixtures/nppiConvert_symbols.txt` — no-rounding Convert fixture
+- `npp-codegen/examples/gen_convert_impls.rs` — generator example
+- `npp/src/convert_macros.rs` — `impl_convert_for!` dual-type macro
+- `npp/src/convert_generated.rs` — 7 `(src,dst)` groups: `(i16→f32, u16→f32, u16→i32, u8→i16, u8→u16, u8→f32, u8→i32)`, all `_Ctx`
+- `npp/tests/golden_convert_16u32f.rs` — golden test stub for 16u→32f
+- `npp/tests/golden_convert_8u16u.rs` — golden test stub for 8u→16u
+
+The hand-written `ConvertTo<f32> for CudaImage<u8>` was removed from `convert_ops.rs`
+in favour of the generated impl. `Normalize` stayed hand-written (generalization
+deferred to F5.2).
+
+**Generated (from fixture, committed):** `npp/src/convert_generated.rs` — byte-identity
+guarded by `convert_generated_is_byte_identical` test.
+
+**Point forward to F5.2:** Normalize generalization across the alphabet and
+rounding-mode Convert variants are the next step.
+
+---
+
+## F5.2 — Normalize codegen + rounding-mode ConvertTo
+
+**What:** (1) Generalize `Normalize` across the alphabet — pulls in the `nppiMulC_`
+family, per-source-type scale constants (`1/255`, `1/65535`, …), and float-source
+handling. (2) Add the rounding-mode `nppiConvert_*` variants (the 20 `NppRoundMode` +
+17 scaled functions), which requires a **public API change** to the `ConvertTo` trait
+(a rounding parameter).
+
+**Why deferred:** F5.1 chose the no-rounding `ConvertTo` group to stay shippable
+without an API change. Each piece is ~the size of F5.1.
+
+**Dependencies:** F5.1 (establishes the dual-type codegen path), F1/F2.
 
 ---
 
@@ -354,8 +390,8 @@ patterns being mature enough to reuse the approach.
 ## Suggested rough sequencing
 
 ```
-M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops)
-     │      └─────────────────────> F6 (golden tests, grows with F1/F2)
+M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops) ──> F5.1 (ConvertTo codegen) ──> F5.2 (Normalize codegen + rounding ConvertTo)
+     │      │                              └────────────────> F6 (golden tests, grows with ops)
      ├─> F3 (image-rs boundary)           [independent]
      ├─> F4 (graphynx boundary)           [independent]
      ├─> F7 (release validation)          [type seal did half in M1]
@@ -366,12 +402,12 @@ M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (c
                 F10 (IPP) ── furthest out, reuses the pattern
 ```
 
-**Sequencing note:** F1, F2, and F8 (core) are complete and merged on `main`.
+**Sequencing note:** F1, F2, F8 (core), and F5.1 are complete and merged on `main`.
 The cross-cutting F8↔F1 signature-shaping risk (the load-bearing constraint that
 shaped the original roadmap) is **resolved**: F8 shipped after F1/F2 with a clean
 `_Ctx` regeneration, so the feared "regenerate when streams land" event already
-occurred and is closed. All remaining features (F3, F4, F5, F6/F6.1, F7, F8.1,
-F8.2, F9, F10) are independent — the next phase is a free choice.
+occurred and is closed. All remaining features (F3, F4, F5, F5.2, F6/F6.1, F7,
+F8.1, F8.2, F9, F10) are independent — the next phase is a free choice.
 
 ---
 

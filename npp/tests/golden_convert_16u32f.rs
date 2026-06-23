@@ -49,8 +49,7 @@ fn test_golden_convert_16u32f_c3() {
     let ctx = stream_context_for(0).expect("CUDA device init");
 
     // 3-channel source (u16)
-    let src =
-        CudaImage::from_host(ctx.clone(), 3, W, H, &make_input()).expect("src allocation");
+    let src = CudaImage::from_host(ctx.clone(), 3, W, H, &make_input()).expect("src allocation");
 
     // 3-channel destination (f32)
     let mut dst = CudaImage::<f32>::new(ctx.clone(), 3, W, H).expect("dst allocation");

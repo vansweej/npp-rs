@@ -37,6 +37,10 @@ pub struct FamilyDescriptor {
     /// buffer‑size query function. When `Some`, the generator emits
     /// `($mean_sym, $buffer_sym)` tuples instead of bare symbol names.
     pub get_buffer_host_size_prefix: Option<&'static str>,
+    /// When true, the family carries two type tokens (src+dst); the generator
+    /// uses `classify_convert` and emits `impl_*_for!($src_ty, $dst_ty, "$src_tok",
+    /// "$dst_tok", { … })`.
+    pub dual_type: bool,
 }
 ```
 
@@ -67,7 +71,7 @@ impl_mean_for!(u8, "8u", {
 });
 ```
 
-Otherwise (Resize, SwapChannels) it emits bare symbols:
+Otherwise (Resize, SwapChannels, Convert) it emits bare symbols:
 ```rust
 impl_resize_for!(u8, "8u", {
     1 => npp_sys::nppiResize_8u_C1R,
@@ -76,13 +80,39 @@ impl_resize_for!(u8, "8u", {
 });
 ```
 
+## Dual-type families
+
+The Convert family carries **two** type tokens (src + dst) instead of one, because
+conversion happens between different pixel types (e.g. `u8 → f32`). This is
+supported by the `dual_type: true` field on `FamilyDescriptor`.
+
+When `dual_type` is true, `generate_for_family()` calls `classify_convert()`
+instead of `classify()`. `classify_convert()` uses a two-token split algorithm:
+
+1. The segment between `nppiConvert_` and the first `_` is split at every
+   position `k` such that both `segment[..k]` and `segment[k..]` are valid NPP
+   type tokens (from `["8u","8s","16u","16s","32u","32s","32f","64f"]`).
+2. **Exactly one** valid split → use that `(src, dst)` pair.
+3. **Zero** valid splits → reject the symbol.
+4. **Two or more** valid splits → `debug_assert!` panic (ambiguity bug, build-time only).
+
+The generator emits a dual-type invocation:
+```rust
+impl_convert_for!(u8, f32, "8u", "32f", {
+    1 => npp_sys::nppiConvert_8u32f_C1R_Ctx,
+    3 => npp_sys::nppiConvert_8u32f_C3R_Ctx,
+    4 => npp_sys::nppiConvert_8u32f_C4R_Ctx,
+});
+```
+
 ## Families implemented
 
-| Family | Prefix | Channels | Custom variants | Buffer prefix | Shape |
-|--------|--------|----------|----------------|---------------|-------|
-| Resize | `nppiResize_` | C1, C3, C4 | — | — | `SRC+STEP, SIZE, RECT, DST+STEP, SIZE, RECT, INTERP` |
-| SwapChannels | `nppiSwapChannels_` | C4 (src) | `C4C3R` | — | `SRC+STEP, DST+STEP, SIZE, CHANNEL_ORDER` |
-| Mean | `nppiMean_` | C1, C3, C4 | — | `nppiMeanGetBufferHostSize_` | `SRC+STEP, SIZE, SCRATCH_BUF, OUT_SCALAR` |
+| Family | Prefix | Channels | Custom variants | Buffer prefix | Shape | Dual-type |
+|--------|--------|----------|----------------|---------------|-------|-----------|
+| Resize | `nppiResize_` | C1, C3, C4 | — | — | `SRC+STEP, SIZE, RECT, DST+STEP, SIZE, RECT, INTERP` | No |
+| SwapChannels | `nppiSwapChannels_` | C4 (src) | `C4C3R` | — | `SRC+STEP, DST+STEP, SIZE, CHANNEL_ORDER` | No |
+| Mean | `nppiMean_` | C1, C3, C4 | — | `nppiMeanGetBufferHostSize_` | `SRC+STEP, SIZE, SCRATCH_BUF, OUT_SCALAR` | No |
+| Convert | `nppiConvert_` | C1, C3, C4 | — | — | `SRC+STEP, DST+STEP, SIZE` | Yes |
 
 ## How to add a new family
 
@@ -95,6 +125,10 @@ impl_resize_for!(u8, "8u", {
      `custom_variants`.
    - If your family is a two‑call scratch‑buffer op (like Mean), set
      `get_buffer_host_size_prefix`.
+   - If your family carries two type tokens (src + dst, like Convert), set
+     `dual_type: true`. You will also need to add a `classify_*` function in
+     `classify.rs` and a dual‑type macro with signature
+     `($src_ty:ty, $dst_ty:ty, $src_token:expr, $dst_token:expr, { … })`.
 
 3. **Create a macro** at `npp/src/{family}_macros.rs` with the `impl_*_for!`
    macro definition. Follow the pattern in `resize_macros.rs` (single‑call) or
