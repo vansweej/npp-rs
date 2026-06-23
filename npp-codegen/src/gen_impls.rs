@@ -453,9 +453,7 @@ pub fn generate_normalize_impls(symbols: &[String]) -> String {
     output.push_str(
         "//! GENERATED — re-run `cargo run --example gen_normalize_impls` on CUDA bump.\n",
     );
-    output.push_str(
-        "//! This file is **committed** (like `resize_caps.rs`), not gitignored.\n",
-    );
+    output.push_str("//! This file is **committed** (like `resize_caps.rs`), not gitignored.\n");
     output.push('\n');
 
     // Emit use statements
@@ -469,7 +467,9 @@ pub fn generate_normalize_impls(symbols: &[String]) -> String {
     for (token, denom) in &normalize_map {
         let rty = npp_type_to_rust(token).expect("already validated above");
         let denom_str = format!("{denom:.1}_f32");
-        output.push_str(&format!("impl_normalize_for!({rty}, {denom_str}, \"{token}\");\n"));
+        output.push_str(&format!(
+            "impl_normalize_for!({rty}, {denom_str}, \"{token}\");\n"
+        ));
     }
 
     output

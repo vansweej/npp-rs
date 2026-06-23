@@ -62,12 +62,12 @@
 macro_rules! impl_normalize_for {
     ($src_ty:ty, $denominator:expr, $src_token:expr) => {
         #[doc = concat!(
-            "Normalize `CudaImage<",
-            stringify!($src_ty),
-            ">` to `CudaImage<f32>` using NPP type token `",
-            $src_token,
-            "` → `32f`. Dispatches on `dst.channels()` at runtime.",
-        )]
+                    "Normalize `CudaImage<",
+                    stringify!($src_ty),
+                    ">` to `CudaImage<f32>` using NPP type token `",
+                    $src_token,
+                    "` → `32f`. Dispatches on `dst.channels()` at runtime.",
+                )]
         ///
         /// # Implementation
         ///
@@ -122,17 +122,15 @@ macro_rules! impl_normalize_for {
 
                 let status = unsafe {
                     match dst.channels() {
-                        1 => {
-                            npp_sys::nppiMulC_32f_C1R_Ctx(
-                                dst_ptr,
-                                dst_step,
-                                scale,
-                                dst_ptr,
-                                dst_step,
-                                size,
-                                dst.ctx.raw_ctx(),
-                            )
-                        }
+                        1 => npp_sys::nppiMulC_32f_C1R_Ctx(
+                            dst_ptr,
+                            dst_step,
+                            scale,
+                            dst_ptr,
+                            dst_step,
+                            size,
+                            dst.ctx.raw_ctx(),
+                        ),
                         3 => {
                             let constants: [f32; 3] = [scale; 3];
                             npp_sys::nppiMulC_32f_C3R_Ctx(
