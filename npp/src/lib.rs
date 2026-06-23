@@ -29,10 +29,10 @@
 
 #![deny(missing_docs)]
 
-/// Macro to generate cross-type `impl ConvertTo` for image types.
-pub mod convert_macros;
 /// Generated `impl ConvertTo` for all NPP-supported (src,dst) pairs (committed artifact).
 pub mod convert_generated;
+/// Macro to generate cross-type `impl ConvertTo` for image types.
+pub mod convert_macros;
 /// Cross-type pixel format conversion operations (Normalize only).
 ///
 /// ConvertTo is generated in `convert_generated.rs`.

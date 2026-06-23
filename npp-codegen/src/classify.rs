@@ -195,10 +195,8 @@ pub fn classify_convert(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
     const ACCEPTED_CHS: &[u8] = &[1, 3, 4];
 
     // First pass: collect all valid candidates grouped by (src, dst, channels)
-    let mut candidates: std::collections::HashMap<
-        (String, String, u8),
-        Vec<(String, String)>,
-    > = std::collections::HashMap::new();
+    let mut candidates: std::collections::HashMap<(String, String, u8), Vec<(String, String)>> =
+        std::collections::HashMap::new();
 
     for raw in symbols {
         let s = match raw.strip_prefix(PREFIX) {
@@ -223,8 +221,7 @@ pub fn classify_convert(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
         for k in 1..token_segment.len() {
             let src_candidate = &token_segment[..k];
             let dst_candidate = &token_segment[k..];
-            if NPP_TYPE_TOKENS.contains(&src_candidate)
-                && NPP_TYPE_TOKENS.contains(&dst_candidate)
+            if NPP_TYPE_TOKENS.contains(&src_candidate) && NPP_TYPE_TOKENS.contains(&dst_candidate)
             {
                 valid_splits.push((k, src_candidate, dst_candidate));
             }
@@ -239,9 +236,7 @@ pub fn classify_convert(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
                     false,
                     "classify_convert: {} valid splits for symbol {} (segment: {}) — \
                      two-token split ambiguity",
-                    n,
-                    raw,
-                    token_segment
+                    n, raw, token_segment
                 );
                 // Fall through — reject in release builds when debug_assert is elided
                 continue;
@@ -596,8 +591,7 @@ mod tests {
     #[test]
     fn convert_prefer_ctx_variant() {
         // When both C1R and C1R_Ctx exist, prefer _Ctx
-        let result =
-            classify_convert(&["nppiConvert_8u32f_C1R", "nppiConvert_8u32f_C1R_Ctx"]);
+        let result = classify_convert(&["nppiConvert_8u32f_C1R", "nppiConvert_8u32f_C1R_Ctx"]);
         assert_eq!(
             result.len(),
             1,

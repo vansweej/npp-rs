@@ -72,6 +72,7 @@ macro_rules! impl_convert_for {
         /// channel counts disagree, or if `self.channels()` is not one of the
         /// supported channel counts.
         /// Returns `NppError::Npp` if the underlying NPP call fails.
+        #[allow(clippy::macro_metavars_in_unsafe)]
         impl ConvertTo<$dst_ty> for CudaImage<$src_ty> {
             fn convert(&self, dst: &mut CudaImage<$dst_ty>) -> Result<(), NppError> {
                 // Check 1: Agreement — dimensions and channels must match
