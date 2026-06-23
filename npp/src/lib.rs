@@ -29,7 +29,14 @@
 
 #![deny(missing_docs)]
 
-/// Cross-type pixel format conversion operations (hand-written).
+/// Macro to generate cross-type `impl ConvertTo` for image types.
+pub mod convert_macros;
+/// Generated `impl ConvertTo` for all NPP-supported (src,dst) pairs (committed artifact).
+pub mod convert_generated;
+/// Cross-type pixel format conversion operations (Normalize only).
+///
+/// ConvertTo is generated in `convert_generated.rs`.
+/// Generalizing Normalize across the alphabet is deferred to F5.2.
 pub mod convert_ops;
 pub mod cuda;
 /// NPP error types and the `check_status` helper.
