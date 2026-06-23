@@ -10,7 +10,8 @@
 //! has no trait impl, making it a compile-time error.
 //!
 //! Cross-type operations ([`ConvertTo`](crate::imageops::ConvertTo), [`Normalize`](crate::imageops::Normalize))
-//! convert between different pixel types (e.g. `u8 → f32`).
+//! convert between different pixel types (e.g. `u8 → f32`). Normalize is generated
+//! for integer→f32 pairs; rounding-mode ConvertTo is deferred to F5.3.
 //!
 //! Round-trip to host memory uses `TryFrom<&CudaImage<T>> for Vec<T>`.
 //! There is no `image` crate dependency in the core.
@@ -33,10 +34,10 @@
 pub mod convert_generated;
 /// Macro to generate cross-type `impl ConvertTo` for image types.
 pub mod convert_macros;
-/// Cross-type pixel format conversion operations (Normalize only).
-///
-/// ConvertTo is generated in `convert_generated.rs`.
-/// Generalizing Normalize across the alphabet is deferred to F5.2.
+/// Placeholder module — both `ConvertTo` and `Normalize` are now generated
+/// (`convert_generated.rs` and `normalize_generated.rs` respectively).
+/// Retained for future hand-written conversion ops.
+/// Rounding-mode ConvertTo variants are deferred to **F5.3**.
 pub mod convert_ops;
 pub mod cuda;
 /// NPP error types and the `check_status` helper.
