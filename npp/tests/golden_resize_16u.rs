@@ -29,8 +29,13 @@ fn make_input() -> Vec<u16> {
 }
 
 /// Golden output for NearestNeighbor 12x8 → 6x4.
-/// GPU-captured bytes — empty until pinned.
-const EXPECTED: &[u16] = &[];
+/// Generated on NVIDIA GPU, NearestNeighbor interpolation (bit-exact).
+const EXPECTED: &[u16] = &[
+    0, 0, 128, 42, 0, 128, 84, 0, 128, 126, 0, 128, 168, 0, 128, 210, 0, 128, 0, 64, 128, 42, 64,
+    128, 84, 64, 128, 126, 64, 128, 168, 64, 128, 210, 64, 128, 0, 128, 128, 42, 128, 128, 84, 128,
+    128, 126, 128, 128, 168, 128, 128, 210, 128, 128, 0, 192, 128, 42, 192, 128, 84, 192, 128, 126,
+    192, 128, 168, 192, 128, 210, 192, 128,
+];
 
 #[test]
 fn test_golden_resize_16u_nn() {

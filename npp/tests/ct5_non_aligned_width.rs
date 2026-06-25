@@ -31,10 +31,16 @@ fn make_input() -> Vec<u8> {
     data
 }
 
-/// Golden output — pinned from first GPU run. If NPP returns NPP_STEP_ERROR
-/// on this CUDA version, this test prints the error as an F7 finding and
-/// leaves EXPECTED empty (the test still panics "not yet pinned").
-const EXPECTED: &[u8] = &[];
+/// Golden output — pinned from GPU run on CUDA 12.9, NearestNeighbor 3×16→6×8.
+const EXPECTED: &[u8] = &[
+    0, 0, 64, 0, 0, 64, 42, 0, 64, 42, 0, 64, 84, 0, 64, 84, 0, 64, 0, 32, 64, 0, 32, 64, 42, 32,
+    64, 42, 32, 64, 84, 32, 64, 84, 32, 64, 0, 64, 64, 0, 64, 64, 42, 64, 64, 42, 64, 64, 84, 64,
+    64, 84, 64, 64, 0, 96, 64, 0, 96, 64, 42, 96, 64, 42, 96, 64, 84, 96, 64, 84, 96, 64, 0, 128,
+    64, 0, 128, 64, 42, 128, 64, 42, 128, 64, 84, 128, 64, 84, 128, 64, 0, 160, 64, 0, 160, 64, 42,
+    160, 64, 42, 160, 64, 84, 160, 64, 84, 160, 64, 0, 192, 64, 0, 192, 64, 42, 192, 64, 42, 192,
+    64, 84, 192, 64, 84, 192, 64, 0, 224, 64, 0, 224, 64, 42, 224, 64, 42, 224, 64, 84, 224, 64,
+    84, 224, 64,
+];
 
 #[test]
 fn test_non_aligned_width_resize() {
