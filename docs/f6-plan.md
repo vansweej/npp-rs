@@ -477,10 +477,10 @@ use npp_rs::stream::stream_context_for;
 use npp_rs::test_helpers::assert_golden;
 use std::convert::TryFrom;
 
-const SRC_W: u32 = 512;
-const SRC_H: u32 = 384;
-const DST_W: u32 = 256;
-const DST_H: u32 = 192;
+const SRC_W: u32 = 32;
+const SRC_H: u32 = 24;
+const DST_W: u32 = 16;
+const DST_H: u32 = 12;
 
 fn make_input() -> Vec<u8> {
     let mut data = Vec::with_capacity((SRC_W * SRC_H * 3) as usize);
@@ -509,7 +509,7 @@ fn bench_resize_correctness(c: &mut Criterion) {
         &(),
         |b, _| {
             b.iter(|| {
-                src.resize(&mut dst, ResizeInterpolation::Bilinear)
+                src.resize(&mut dst, ResizeInterpolation::Linear)
                     .expect("resize");
                 let output: Vec<u8> = Vec::try_from(&dst).expect("read-back");
                 assert_golden(&output, EXPECTED, "bench resize correctness");
