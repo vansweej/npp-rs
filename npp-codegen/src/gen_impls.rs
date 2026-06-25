@@ -799,7 +799,9 @@ mod tests {
 
         // Verify all are C4C3R or C4C3R_Ctx
         assert!(
-            classified.iter().all(|c| c.variant == "C4C3R" || c.variant == "C4C3R_Ctx"),
+            classified
+                .iter()
+                .all(|c| c.variant == "C4C3R" || c.variant == "C4C3R_Ctx"),
             "All classified must be C4C3R or C4C3R_Ctx"
         );
     }

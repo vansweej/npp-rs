@@ -52,7 +52,9 @@ nix develop . --command cargo tarpaulin    # coverage, non-GPU only, must be ≥
 GPU tests are a **manual gate**, gated behind the `gpu` feature using
 `#[cfg_attr(not(feature = "gpu"), ignore)]`. Plain `cargo test` must run zero GPU
 code and must not initialize a CUDA device. CI has no GPU lane by design; do not
-add one. There are currently **no pixel-correctness tests** (finding C12) — tests
+add one. **(C12 resolved — full-frame golden tests for Resize (u8, i16, u16, f32),
+SwapChannels (u8), Convert (u8→f32, u16→f32, u8→u16), Normalize (u8→f32, u16→f32, i16→f32),
+and Mean (u8) are all pinned and GPU-verified.)** Tests
 assert only geometry/dimensions.
 
 ## FFI / linking gotchas (when touching `npp-sys/build.rs`)
