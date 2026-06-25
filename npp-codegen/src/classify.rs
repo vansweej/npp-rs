@@ -516,9 +516,13 @@ mod tests {
         );
         for cs in &result {
             assert_eq!(cs.channels, 4, "all SwapChannels must map to channels=4");
-            assert_eq!(
-                cs.variant, "C4C3R",
-                "all SwapChannels must have variant C4C3R"
+            // The classifier stores `_Ctx` as part of the variant name and
+            // deduplicates when both `_Ctx` and non-`_Ctx` exist for the same
+            // (type, channels) pair, preferring `_Ctx`.
+            assert!(
+                cs.variant == "C4C3R" || cs.variant == "C4C3R_Ctx",
+                "all SwapChannels must have variant C4C3R or C4C3R_Ctx, got {}",
+                cs.variant
             );
         }
     }

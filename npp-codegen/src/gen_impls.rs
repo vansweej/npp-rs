@@ -665,6 +665,86 @@ mod tests {
     }
 
     #[test]
+    fn swap_channels_generated_is_byte_identical() {
+        // Read the committed generated file
+        let committed_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("npp")
+            .join("src")
+            .join("swap_channels_generated.rs");
+        let committed = fs::read_to_string(&committed_path)
+            .expect("failed to read committed swap_channels_generated.rs");
+
+        // Generate from the fixture
+        let fixture = fixture_path("nppiSwapChannels_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        let generated = generate_for_family(&SWAP_CHANNELS_FAMILY, &symbols);
+
+        // Show diff if not identical
+        if committed != generated {
+            eprintln!(
+                "Committed length: {}, Generated length: {}",
+                committed.len(),
+                generated.len()
+            );
+            for (i, (cl, gl)) in committed.lines().zip(generated.lines()).enumerate() {
+                if cl != gl {
+                    eprintln!("First difference at line {}:", i + 1);
+                    eprintln!("  Committed: {:?}", cl);
+                    eprintln!("  Generated: {:?}", gl);
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            committed, generated,
+            "swap_channels_generated.rs must be byte-identical"
+        );
+    }
+
+    #[test]
+    fn mean_generated_is_byte_identical() {
+        // Read the committed generated file
+        let committed_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("npp")
+            .join("src")
+            .join("mean_generated.rs");
+        let committed = fs::read_to_string(&committed_path)
+            .expect("failed to read committed mean_generated.rs");
+
+        // Generate from the fixture
+        let fixture = fixture_path("nppiMean_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        let generated = generate_for_family(&MEAN_FAMILY, &symbols);
+
+        // Show diff if not identical
+        if committed != generated {
+            eprintln!(
+                "Committed length: {}, Generated length: {}",
+                committed.len(),
+                generated.len()
+            );
+            for (i, (cl, gl)) in committed.lines().zip(generated.lines()).enumerate() {
+                if cl != gl {
+                    eprintln!("First difference at line {}:", i + 1);
+                    eprintln!("  Committed: {:?}", cl);
+                    eprintln!("  Generated: {:?}", gl);
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            committed, generated,
+            "mean_generated.rs must be byte-identical"
+        );
+    }
+
+    #[test]
     fn swap_channels_corpus_is_generatable() {
         // Verify SwapChannels fixture can be read and generates valid output
         let fixture = fixture_path("nppiSwapChannels_symbols.txt");
@@ -677,16 +757,20 @@ mod tests {
         let generated = generate_for_family(&SWAP_CHANNELS_FAMILY, &symbols);
         assert!(!generated.is_empty(), "generated output must not be empty");
 
-        // Verify it contains the expected types with C4C3R variant
+        // Verify it contains the expected types with C4C3R_Ctx variant
+        // (the classifier prefers _Ctx over non-_Ctx when both exist)
         assert!(generated.contains("impl_swap_channels_for!(u8, \"8u\", {"));
-        assert!(generated.contains("4 => npp_sys::nppiSwapChannels_8u_C4C3R,"));
+        assert!(generated.contains("4 => npp_sys::nppiSwapChannels_8u_C4C3R_Ctx,"));
         assert!(generated.contains("impl_swap_channels_for!(f32, \"32f\", {"));
-        assert!(generated.contains("4 => npp_sys::nppiSwapChannels_32f_C4C3R,"));
+        assert!(generated.contains("4 => npp_sys::nppiSwapChannels_32f_C4C3R_Ctx,"));
     }
 
     #[test]
     fn swap_channels_accepts_c4c3r_rejects_others() {
-        // Only C4C3R should be classified; C3R, C4R, _Ctx variants are rejected
+        // Only C4C3R variants should be classified; C3R, C4R are rejected.
+        // The fixture now has both C4C3R and C4C3R_Ctx for each type; the
+        // classifier deduplicates and prefers _Ctx, so we get 5 results
+        // (one per type: i16, u16, f32, i32, u8).
         let fixture = fixture_path("nppiSwapChannels_symbols.txt");
         let (symbols, _) = read_fixture(&fixture);
 
@@ -695,12 +779,12 @@ mod tests {
         let classified =
             crate::classify::classify(&symbol_refs, "nppiSwapChannels_", &[4], &[(4, "C4C3R")]);
 
-        // Should have exactly all the listed symbols (they're all C4C3R)
+        // Should have 5 results (one per unique type after _Ctx dedup)
         assert_eq!(
             classified.len(),
-            symbols.len(),
-            "All {} symbols in fixture should be classified as C4C3R",
-            symbols.len()
+            5,
+            "Expected 5 unique (type, channels) pairs after _Ctx dedup, got {}",
+            classified.len()
         );
 
         // Verify no C3R or C4R made it through
@@ -713,10 +797,10 @@ mod tests {
             "C4R variant must be rejected"
         );
 
-        // Verify all are C4C3R
+        // Verify all are C4C3R or C4C3R_Ctx
         assert!(
-            classified.iter().all(|c| c.variant == "C4C3R"),
-            "All classified must be C4C3R"
+            classified.iter().all(|c| c.variant == "C4C3R" || c.variant == "C4C3R_Ctx"),
+            "All classified must be C4C3R or C4C3R_Ctx"
         );
     }
 
