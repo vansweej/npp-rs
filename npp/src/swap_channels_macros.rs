@@ -1,7 +1,8 @@
-/// Macro: generate `impl SwapChannels for CudaImage<$rust_ty>`.
+/// Macro: generate a `pub(crate)` ROI engine function + `impl SwapChannels for CudaImage<$rust_ty>`.
 ///
 /// # Arguments
 ///
+/// * `$fn_name` — name of the emitted free `pub(crate)` engine function (e.g. `swap_into_8u`).
 /// * `$rust_ty` — the Rust pixel element type (e.g. `u8`, `f32`).
 /// * `$token` — the NPP type token string (e.g. `"8u"`, `"32f"`).
 /// * `{$($ch:literal => $sym:path),+}` — channel-count arms mapping to NPP symbols,
@@ -9,23 +10,97 @@
 ///
 /// # Expansion
 ///
-/// Expands to an `impl SwapChannels for CudaImage<$rust_ty>` block with:
+/// 1. A free `pub(crate)` engine function (`$fn_name`) with the raw-pointer FFI call
+///    sequence. Takes all arguments explicitly (no `CudaImage` reference) so it can
+///    serve both owned `CudaImage` calls and borrowed `CudaImageView` sub-image calls.
+/// 2. An `impl SwapChannels for CudaImage<$rust_ty>` block whose `fn bgra_to_rgb` body
+///    is a thin wrapper over the engine function.
 ///
-/// 1. Dimension agreement check (src vs dst).
-/// 2. `NppiSize` setup from image dimensions.
-/// 3. Byte-step calculation (`height_stride * size_of::<$rust_ty>()`).
-/// 4. Raw-pointer extraction via `DevicePtr`/`DevicePtrMut`, offset by `img_index`.
-/// 5. `match self.channels()` dispatching to the channel-specific NPP symbol.
-/// 6. `check_status(status)` returning `Result<(), NppError>`.
+/// # Engine function arguments
+///
+/// - `src_ptr`, `src_step_bytes`, `src_w`, `src_h`, `src_channels` — source parameters
+/// - `dst_ptr`, `dst_step_bytes`, `dst_w`, `dst_h` — destination parameters
+/// - `ctx` — raw `NppStreamContext` (by value, `Copy`)
 ///
 /// # Safety
 ///
-/// `self` and `dst` must not overlap in memory. This applies to
+/// `src_ptr` and `dst_ptr` must not overlap in memory. This applies to
 /// **neighbourhood-gather** operations; aliasing produces undefined results.
 /// Purely **elementwise** operations may safely alias (see `Normalize`).
 #[macro_export]
 macro_rules! impl_swap_channels_for {
-    ($rust_ty:ty, $token:expr, { $($ch:literal => $sym:path),+ $(,)? }) => {
+    ($fn_name:ident, $rust_ty:ty, $token:expr, { $($ch:literal => $sym:path),+ $(,)? }) => {
+        /// ROI swap channels engine: reorder BGRA→RGB using raw device pointers.
+        ///
+        /// This `pub(crate)` function accepts explicit pointers and dimensions so it can
+        /// be called from both the owned `SwapChannels` trait impl and from
+        /// `CudaImageView`-based sub-image paths. The FFI call sequence is identical
+        /// to the owned path.
+        ///
+        /// # nStep unit conversion
+        ///
+        /// NPP's `nStep` is in **bytes**. Callers must pass `height_stride * size_of::<T>()`.
+        ///
+        /// # Precondition
+        ///
+        /// `src_ptr` and `dst_ptr` must not overlap in memory. This applies to
+        /// **neighbourhood-gather** operations; aliasing produces undefined results.
+        /// Purely **elementwise** operations may safely alias.
+        ///
+        /// `src_w` / `src_h` must equal `dst_w` / `dst_h` — SwapChannels does not
+        /// resize, it only reorders channels.
+        ///
+        /// # Errors
+        ///
+        /// Returns `NppError::InvalidArgument` if src and dst dimensions disagree,
+        /// or if `src_channels` is not one of the supported channel counts.
+        /// Returns `NppError::Npp` if the underlying NPP call fails.
+        #[allow(clippy::too_many_arguments)]
+        #[cfg(not(tarpaulin_include))]
+        pub(crate) fn $fn_name(
+            src_ptr: *const $rust_ty,
+            src_step_bytes: i32,
+            src_w: u32,
+            src_h: u32,
+            src_channels: u8,
+            dst_ptr: *mut $rust_ty,
+            dst_step_bytes: i32,
+            dst_w: u32,
+            dst_h: u32,
+            ctx: npp_sys::NppStreamContext,
+        ) -> Result<(), NppError> {
+            if src_w != dst_w || src_h != dst_h {
+                return Err(NppError::InvalidArgument(
+                    "src and dst dimensions must match for bgra_to_rgb".into(),
+                ));
+            }
+            let nppi_size = NppiSize { width: dst_w as i32, height: dst_h as i32 };
+            let order: [std::os::raw::c_int; 3] = [2, 1, 0];
+            let status = unsafe {
+                match src_channels {
+                    $(
+                        $ch => $sym(
+                            src_ptr as *const _,
+                            src_step_bytes,
+                            dst_ptr as *mut _,
+                            dst_step_bytes,
+                            nppi_size,
+                            &order[0],
+                            ctx,
+                        ),
+                    )+
+                    _ => {
+                        return Err(NppError::InvalidArgument(format!(
+                            "unsupported channel count {} for SwapChannels with type {}",
+                            src_channels,
+                            stringify!($rust_ty),
+                        )));
+                    }
+                }
+            };
+            check_status(status)
+        }
+
         impl SwapChannels for CudaImage<$rust_ty> {
             #[doc = concat!(
                 "BGRA→RGB reorder for `CudaImage<",
@@ -40,9 +115,8 @@ macro_rules! impl_swap_channels_for {
             /// NPP's `nStep` is in **bytes**. `layout.height_stride` stores the per-row
             /// element count; we multiply by `size_of::<T>()` to produce the byte step.
             ///
-            /// NOTE: sub-image support (offset-in-slice) is **deferred to F6.2**.
-            /// This impl operates on the full owned buffer only (`img_index` is always 0
-            /// for owned images; the pointer arithmetic does not apply a `img_index` offset).
+            /// This is a thin wrapper over the [`swap_into_`] engine function, which
+            /// also serves ROI sub-image views via `CudaImageView::device_ptr()`.
             ///
             /// # Precondition
             ///
@@ -56,55 +130,19 @@ macro_rules! impl_swap_channels_for {
             /// or if `self.channels()` is not one of the supported channel counts.
             /// Returns `NppError::Npp` if the underlying NPP call fails.
             fn bgra_to_rgb(&self, dst: &mut Self) -> Result<(), NppError> {
-                if self.width() != dst.width() || self.height() != dst.height() {
-                    return Err(NppError::InvalidArgument(
-                        "src and dst dimensions must match for bgra_to_rgb".into(),
-                    ));
-                }
-
-                let nppi_size = NppiSize {
-                    width: dst.width() as i32,
-                    height: dst.height() as i32,
-                };
-
-                // nStep is in BYTES. height_stride counts elements. Convert.
                 let src_step_bytes =
                     (self.layout.height_stride * std::mem::size_of::<$rust_ty>()) as i32;
                 let dst_step_bytes =
                     (dst.layout.height_stride * std::mem::size_of::<$rust_ty>()) as i32;
-
-                // ── Raw pointers via DevicePtr/DevicePtrMut ──
-                let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
-                let src_ptr = *src_base as *const $rust_ty;
-                let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
-                let dst_ptr = *dst_base as *mut $rust_ty;
-
-                // BGRA→RGB channel order: swap R and B (indices 2, 1, 0).
-                let order: [std::os::raw::c_int; 3] = [2, 1, 0];
-
-                let status = unsafe {
-                    match self.channels() {
-                        $(
-                            $ch => $sym(
-                                src_ptr as *const _,
-                                src_step_bytes,
-                                dst_ptr as *mut _,
-                                dst_step_bytes,
-                                nppi_size,
-                                &order[0],
-                                self.ctx.raw_ctx(),
-                            ),
-                        )+
-                        _ => {
-                            return Err(NppError::InvalidArgument(format!(
-                                "unsupported channel count {} for SwapChannels with type {}",
-                                self.channels(),
-                                stringify!($rust_ty),
-                            )));
-                        }
-                    }
-                };
-                check_status(status)
+                let src_ptr =
+                    *cudarc::driver::DevicePtr::device_ptr(&self.buf) as *const $rust_ty;
+                let dst_ptr =
+                    *cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf) as *mut $rust_ty;
+                $fn_name(
+                    src_ptr, src_step_bytes, self.width(), self.height(), self.channels(),
+                    dst_ptr, dst_step_bytes, dst.width(), dst.height(),
+                    self.ctx.raw_ctx(),
+                )
             }
         }
     };

@@ -39,9 +39,10 @@ macro_rules! impl_mean_for {
             /// NPP's `nStep` is in **bytes**. `layout.height_stride` stores the per-row
             /// element count; we multiply by `size_of::<T>()` to produce the byte step.
             ///
-            /// NOTE: sub-image support (offset-in-slice) is **deferred to F6.2**.
-            /// This impl operates on the full owned buffer only (`img_index` is always 0
-            /// for owned images; the pointer arithmetic does not apply a `img_index` offset).
+            /// NOTE: ROI sub-image support was **implemented in F6.2 for Resize and
+            /// SwapChannels only**. Mean remains **owned-buffer only** (`img_index` is
+            /// always 0 for owned images; the pointer arithmetic does not apply a `img_index`
+            /// offset).
             ///
             /// # Errors
             ///

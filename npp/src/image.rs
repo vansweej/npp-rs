@@ -468,3 +468,32 @@ impl<T: NppPixelType> TryFrom<&CudaImage<T>> for Vec<T> {
         Ok(host)
     }
 }
+
+/// Copy a borrowed image view to host memory.
+///
+/// # Ordering contract
+///
+/// Identical to the owned `TryFrom<&CudaImage<T>>` path: a host-blocking
+/// [`StreamContext::synchronize`] fence, then a NULL-stream DtoH copy. The
+/// fence makes the NULL-stream copy safe against forked-stream NPP work.
+///
+/// # Strided result
+///
+/// The returned `Vec` spans `height * parent_height_stride` elements — for a
+/// sub-image narrower than its parent, it includes inter-row parent pixels
+/// between ROI rows. Callers needing a packed ROI must de-stride, or read an
+/// owned destination instead.
+#[cfg(not(tarpaulin_include))]
+impl<'a, T: NppPixelType> TryFrom<&CudaImageView<'a, T>> for Vec<T> {
+    type Error = NppError;
+
+    fn try_from(v: &CudaImageView<'a, T>) -> Result<Self, Self::Error> {
+        v.ctx.synchronize()?;
+        let len = cudarc::driver::DeviceSlice::len(&v.view);
+        // NppPixelType: ValidAsZeroBits + Copy, so a zeroed host buffer is a
+        // valid T; the copy fully overwrites it before any read.
+        let mut host: Vec<T> = vec![unsafe { std::mem::zeroed::<T>() }; len];
+        v.ctx.device().dtoh_sync_copy_into(&v.view, &mut host)?;
+        Ok(host)
+    }
+}

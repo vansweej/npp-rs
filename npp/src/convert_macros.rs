@@ -56,9 +56,10 @@ macro_rules! impl_convert_for {
         /// Because src and dst have different element types, each has its own
         /// step calculation.
         ///
-            /// NOTE: sub-image support (offset-in-slice) is **deferred to F6.2**.
-            /// This impl operates on the full owned buffer only (`img_index` is always 0
-            /// for owned images; the pointer arithmetic does not apply a `img_index` offset).
+            /// NOTE: ROI sub-image support was **implemented in F6.2 for Resize and
+            /// SwapChannels only**. Convert remains **owned-buffer only** (`img_index` is
+            /// always 0 for owned images; the pointer arithmetic does not apply a `img_index`
+            /// offset).
         ///
         /// # Precondition
         ///

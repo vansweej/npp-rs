@@ -143,7 +143,7 @@ the generation flow.
 
 ---
 
-## F3 — `image-rs` boundary integration
+## F3 — `image-rs` boundary integration *(dropped from this repository)*
 
 **What:** Re-introduce `image` crate conversions as *boundary* `From`/`TryFrom`
 edges (not woven into the core): `TryFrom<&RgbImage> for CudaImage<u8>`,
@@ -163,9 +163,14 @@ not something to design against 0.23.
 **Dependencies:** M1 (core must be `image`-free first). Independent of F1/F2
 (can wrap just `u8`/`f32` boundaries early).
 
+**Status change (F6.2):** Ecosystem integration for the `image` crate moves to
+a **separate downstream integration repository** that consumes `npp-rs` as a
+published crate. Any public API that repository requires from `npp-rs` will be
+decided as a deliberate future feature when it materialises.
+
 ---
 
-## F4 — `graphynx` interop
+## F4 — `graphynx` interop *(dropped from this repository)*
 
 **What:** `From`/`Into` boundary conversions between `CudaImage<T>` and
 graphynx's own device-buffer/element types (the author's cudarc-based compute
@@ -181,6 +186,11 @@ type-matching work.
 crosses the boundary.
 
 **Dependencies:** M1. Independent of F1–F3.
+
+**Status change (F6.2):** Ecosystem integration for the `graphynx` crate moves
+to a **separate downstream integration repository** that consumes `npp-rs` as a
+published crate. Any public API that repository requires from `npp-rs` will be
+decided as a deliberate future feature when it materialises.
 
 ---
 
@@ -320,23 +330,20 @@ independently‑releasable hardening work.
 
 ---
 
-## F6.2 — Accessor abstraction & ROI golden tests *(design complete, deferred)*
+## F6.2 — ROI sub-image support for Resize and SwapChannels *(implemented)*
 
-**What:** The accessor traits (`NppImageRef`/`NppImageMut`), macro‑emitted
-`*_into` engines, view readback helper, and in‑crate ROI golden tests for
-Resize + SwapChannels. Designed during the F6 planning session against the
-real codebase state (cudarc 0.9.15 `dtoh_sync_copy_into` confirmed to accept
-`&CudaView` via `Src: DevicePtr<T>`; layout model is `height_stride`
-(elements) + `img_index` (element index), NOT `pitch`). The full design is
-in the F6 planning conversation history.
+**What:** `pub(crate)` macro‑emitted `*_into` engine functions for Resize and
+SwapChannels, view readback helper (`TryFrom<&CudaImageView<T>> for Vec<T>`),
+and in‑crate ROI golden tests exercising the engines via
+`CudaImageView::device_ptr()`. Designed during the F6 planning session.
 
-**Why deferred:** Not blocked — it was technically ready for F6 but
-splitting kept F6's scope tight and independently shippable. ROI/sub‑image
-tests are the next logical step when the use case materialises.
+**Scope:** Resize and SwapChannels only. Convert/Normalize/Mean remain
+owned-buffer only. No public API added — engines are `pub(crate)`, the view
+readback is behind the `CudaImageView` type.
 
-**Dependencies:** The `img_index` fix from F6 (the pointer maths is already
-correct on the owned path; ROI work would build the accessor abstraction on
-top). Does NOT require regenerating or repinning anything from F6.
+**Dependencies:** The `img_index` fix from F6 (pointer maths correct on owned
+path). cudarc 0.9.15 `dtoh_sync_copy_into` confirmed to accept `&CudaView` via
+`Src: DevicePtr<T>`.
 
 ---
 
@@ -441,15 +448,15 @@ you're hand-wrapping a second large domain).
 
 ---
 
-## F10 — IPP bindings as sibling crates *(furthest out)*
+## F10 — IPP bindings *(separate project / out of scope)*
 
 **What:** `ipp-sys` / `ipp` sibling crates for Intel IPP, paralleling the
 `npp-sys`/`npp-rs` split — the CPU counterpart to the GPU NPP ops.
 
-**Why:** Stated future vision ("IPP bindings as siblings later"). Entirely
-separate dependency and platform story (Intel IPP, not CUDA); shares only the
-*architectural pattern* (sys-crate + safe-wrapper, capability traits, codegen),
-not code.
+**Why:** Entirely separate dependency and platform story (Intel IPP, not CUDA);
+shares only the *architectural pattern* (sys-crate + safe-wrapper, capability
+traits, codegen), not code. This repository focuses on NVIDIA GPU operations;
+Intel IPP belongs in its own repository.
 
 **Dependencies:** Conceptually independent; benefits from F1's macro/codegen
 patterns being mature enough to reuse the approach.
@@ -460,23 +467,22 @@ patterns being mature enough to reuse the approach.
 
 ```
 M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops) ──> F5.1 (ConvertTo codegen) ──> F5.2 (Normalize codegen) ──> F5.3 (rounding-mode ConvertTo)
-     │      │                              └────────────────> F6 (correctness hardening) ──> F6.2 (accessors, deferred)
-     ├─> F3 (image-rs boundary)           [independent]
-     ├─> F4 (graphynx boundary)           [independent]
+     │      │                              └────────────────> F6 (correctness hardening) ──> F6.2 (ROI sub-image support, DONE)
      ├─> F7 (release validation)          [type seal did half in M1]
      ├─> F8 (streams/execution context)   [DONE]
      │      ├─> F8.1 (configurable device selection)
      │      └─> F8.2 (async multi-stream chaining)
      └─> F9 (npps signal ops) ── after F1
-                F10 (IPP) ── furthest out, reuses the pattern
 ```
 
-**Sequencing note:** F1, F2, F5.1, F5.2, F6, and F8 (core) are complete and merged on `main`.
+**Sequencing note:** F1, F2, F5.1, F5.2, F6, F6.2, and F8 (core) are complete and merged on `main`.
+F3 (image-rs) and F4 (graphynx) are **dropped from this repository** — ecosystem
+integration moves to separate downstream repos. F10 (IPP) is a separate project.
 The cross-cutting F8↔F1 signature-shaping risk (the load-bearing constraint that
 shaped the original roadmap) is **resolved**: F8 shipped after F1/F2 with a clean
 `_Ctx` regeneration, so the feared "regenerate when streams land" event already
-occurred and is closed. All remaining features (F3, F4, F5, F5.3, F6.1, F6.2, F7,
-F8.1, F8.2, F9, F10) are independent — the next phase is a free choice.
+occurred and is closed. All remaining features (F5, F5.3, F6.1, F7, F8.1, F8.2, F9)
+are independent — the next phase is a free choice.
 
 ---
 

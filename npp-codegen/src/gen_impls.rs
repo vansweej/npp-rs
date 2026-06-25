@@ -37,6 +37,11 @@ pub struct FamilyDescriptor {
     /// uses `classify_convert` and emits `impl_*_for!($src_ty, $dst_ty, "$src_tok",
     /// "$dst_tok", { … })`.
     pub dual_type: bool,
+    /// Optional prefix for the engine-function-name argument (e.g. `"resize_into_"`).
+    /// When `Some`, the generator emits `impl_*_for!(<engine_name>, <type>, ...)` where
+    /// `<engine_name>` = `{prefix}{type_token}`. When `None`, no engine name is emitted
+    /// (compatible with macros that do not accept the leading argument).
+    pub engine_fn_prefix: Option<&'static str>,
 }
 
 /// Descriptor for the NPP Resize family.
@@ -57,6 +62,7 @@ pub static RESIZE_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: None,
     dual_type: false,
+    engine_fn_prefix: Some("resize_into_"),
 };
 
 /// Descriptor for the NPP SwapChannels family.
@@ -77,6 +83,7 @@ pub static SWAP_CHANNELS_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: None,
     dual_type: false,
+    engine_fn_prefix: Some("swap_into_"),
 };
 
 /// Descriptor for the NPP Mean family (two-call dance with scratch buffer).
@@ -97,6 +104,7 @@ pub static MEAN_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: Some("nppiMeanGetBufferHostSize_"),
     dual_type: false,
+    engine_fn_prefix: None,
 };
 
 /// Descriptor for the NPP Convert family (dual-type, no-rounding shape only).
@@ -120,6 +128,7 @@ pub static CONVERT_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: None,
     dual_type: true,
+    engine_fn_prefix: None,
 };
 
 /// Map NPP type token to Rust type.
@@ -259,10 +268,18 @@ pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> Str
             };
 
             let mut block = String::new();
-            block.push_str(&format!(
-                "{}!({}, \"{}\", {{\n",
-                family.rust_macro_path, rty, token
-            ));
+            if let Some(prefix) = family.engine_fn_prefix {
+                let engine_name = format!("{prefix}{token}");
+                block.push_str(&format!(
+                    "{}!({}, {}, \"{}\", {{\n",
+                    family.rust_macro_path, engine_name, rty, token
+                ));
+            } else {
+                block.push_str(&format!(
+                    "{}!({}, \"{}\", {{\n",
+                    family.rust_macro_path, rty, token
+                ));
+            }
             for ch in ch_variants.keys() {
                 let variant = &ch_variants[ch];
                 let sym = format!("npp_sys::nppi{}_{}_{}", family_name, token, variant);
@@ -759,9 +776,9 @@ mod tests {
 
         // Verify it contains the expected types with C4C3R_Ctx variant
         // (the classifier prefers _Ctx over non-_Ctx when both exist)
-        assert!(generated.contains("impl_swap_channels_for!(u8, \"8u\", {"));
+        assert!(generated.contains("impl_swap_channels_for!(swap_into_8u, u8, \"8u\", {"));
         assert!(generated.contains("4 => npp_sys::nppiSwapChannels_8u_C4C3R_Ctx,"));
-        assert!(generated.contains("impl_swap_channels_for!(f32, \"32f\", {"));
+        assert!(generated.contains("impl_swap_channels_for!(swap_into_32f, f32, \"32f\", {"));
         assert!(generated.contains("4 => npp_sys::nppiSwapChannels_32f_C4C3R_Ctx,"));
     }
 
@@ -862,8 +879,8 @@ mod tests {
         let (symbols, _) = read_fixture(&fixture);
         assert!(!symbols.is_empty(), "Resize fixture must not be empty");
         let generated = generate_for_family(&RESIZE_FAMILY, &symbols);
-        assert!(generated.contains("impl_resize_for!(u8, \"8u\", {"));
-        assert!(generated.contains("impl_resize_for!(f32, \"32f\", {"));
+        assert!(generated.contains("impl_resize_for!(resize_into_8u, u8, \"8u\", {"));
+        assert!(generated.contains("impl_resize_for!(resize_into_32f, f32, \"32f\", {"));
     }
 
     #[test]
