@@ -1,4 +1,4 @@
-//! GENERATED — re-run `cargo run --example gen_swapchannels_impls` on CUDA bump.
+//! GENERATED — re-run `cargo run --example gen_swap_channels_impls` on CUDA bump.
 //! This file is **committed** (like `resize_caps.rs`), not gitignored.
 
 use crate::error::{check_status, NppError};

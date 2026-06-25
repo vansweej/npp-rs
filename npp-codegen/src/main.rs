@@ -4,13 +4,13 @@
 //! produces a shape histogram showing the distribution of NPP functions
 //! across normalized parameter-role patterns.
 
+use npp_codegen::gen_impls;
 use npp_codegen::shape::derive_shape;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 fn main() {
     let bindings_path = find_bindings_rs();
@@ -198,7 +198,7 @@ fn main() {
     }
 }
 
-/// Find bindings.rs path
+/// Find bindings.rs path using the `gen_impls` resolver.
 fn find_bindings_rs() -> PathBuf {
     if let Ok(path) = env::var("BINDINGS_RS") {
         return PathBuf::from(path);
@@ -208,16 +208,10 @@ fn find_bindings_rs() -> PathBuf {
         return PathBuf::from(first_arg);
     }
 
-    // Try to find it via cargo
-    let output = Command::new("find")
-        .args(["target", "-name", "bindings.rs", "-path", "*/npp-sys/*"])
-        .output()
-        .expect("Failed to run find");
-
-    if output.status.success() {
-        let path_str = String::from_utf8(output.stdout).expect("Invalid UTF-8 in find output");
-        let trimmed = path_str.lines().next().expect("No bindings.rs found");
-        return PathBuf::from(trimmed);
+    // Use the gen_impls resolver (fs::read_dir + substring match) instead of
+    // shelling out to external `find`.
+    if let Some(path) = gen_impls::find_bindings_rs() {
+        return path;
     }
 
     eprintln!("Error: Could not find bindings.rs");

@@ -40,11 +40,19 @@ pub struct FamilyDescriptor {
     /// When true, the dual-type generator path uses `classify_convert_round`
     /// instead of `classify_convert`. Default `false`.
     pub dual_type_round: bool,
+    /// When true, the dual-type generator path uses `classify_convert_round_scaled`
+    /// instead of `classify_convert`/`classify_convert_round`. The generated
+    /// macro invocations emit `impl_convert_rounded_scaled_for!` with an extra
+    /// `scale_factor` parameter. Default `false`.
+    pub dual_type_round_scaled: bool,
     /// Optional prefix for the engine-function-name argument (e.g. `"resize_into_"`).
     /// When `Some`, the generator emits `impl_*_for!(<engine_name>, <type>, ...)` where
     /// `<engine_name>` = `{prefix}{type_token}`. When `None`, no engine name is emitted
     /// (compatible with macros that do not accept the leading argument).
     pub engine_fn_prefix: Option<&'static str>,
+    /// The Cargo example name (without `gen_` prefix) used in the generated-file
+    /// header "// Regenerate with:" comment (e.g. `"convert_impls"`, `"resize_impls"`).
+    pub example_name: &'static str,
 }
 
 /// Descriptor for the NPP Resize family.
@@ -66,7 +74,9 @@ pub static RESIZE_FAMILY: FamilyDescriptor = FamilyDescriptor {
     get_buffer_host_size_prefix: None,
     dual_type: false,
     dual_type_round: false,
+    dual_type_round_scaled: false,
     engine_fn_prefix: Some("resize_into_"),
+    example_name: "resize_impls",
 };
 
 /// Descriptor for the NPP SwapChannels family.
@@ -88,7 +98,9 @@ pub static SWAP_CHANNELS_FAMILY: FamilyDescriptor = FamilyDescriptor {
     get_buffer_host_size_prefix: None,
     dual_type: false,
     dual_type_round: false,
+    dual_type_round_scaled: false,
     engine_fn_prefix: Some("swap_into_"),
+    example_name: "swap_channels_impls",
 };
 
 /// Descriptor for the NPP Mean family (two-call dance with scratch buffer).
@@ -110,7 +122,9 @@ pub static MEAN_FAMILY: FamilyDescriptor = FamilyDescriptor {
     get_buffer_host_size_prefix: Some("nppiMeanGetBufferHostSize_"),
     dual_type: false,
     dual_type_round: false,
+    dual_type_round_scaled: false,
     engine_fn_prefix: None,
+    example_name: "mean_impls",
 };
 
 /// Descriptor for the NPP Convert family (dual-type, no-rounding shape only).
@@ -136,7 +150,9 @@ pub static CONVERT_FAMILY: FamilyDescriptor = FamilyDescriptor {
     get_buffer_host_size_prefix: None,
     dual_type: true,
     dual_type_round: false,
+    dual_type_round_scaled: false,
     engine_fn_prefix: None,
+    example_name: "convert_impls",
 };
 
 /// Descriptor for the NPP ConvertRounded family (rounding-mode, dual-type).
@@ -166,7 +182,9 @@ pub static CONVERT_ROUND_FAMILY: FamilyDescriptor = FamilyDescriptor {
     get_buffer_host_size_prefix: None,
     dual_type: true,
     dual_type_round: true,
+    dual_type_round_scaled: false,
     engine_fn_prefix: None,
+    example_name: "convert_round_impls",
 };
 
 /// Map NPP type token to Rust type.
@@ -212,8 +230,8 @@ pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> Str
     // Emit header guard comment
     let mut output = String::new();
     output.push_str("//! GENERATED — re-run `cargo run --example gen_");
-    output.push_str(&family_name.to_lowercase());
-    output.push_str("_impls` on CUDA bump.\n");
+    output.push_str(family.example_name);
+    output.push_str("` on CUDA bump.\n");
     output.push_str("//! This file is **committed** (like `resize_caps.rs`), not gitignored.\n");
     output.push('\n');
 
