@@ -7,22 +7,22 @@ use crate::imageops::SwapChannels;
 use crate::impl_swap_channels_for;
 use npp_sys::NppiSize;
 
-impl_swap_channels_for!(i16, "16s", {
+impl_swap_channels_for!(swap_into_16s, i16, "16s", {
         4 => npp_sys::nppiSwapChannels_16s_C4C3R_Ctx,
 });
 
-impl_swap_channels_for!(u16, "16u", {
+impl_swap_channels_for!(swap_into_16u, u16, "16u", {
         4 => npp_sys::nppiSwapChannels_16u_C4C3R_Ctx,
 });
 
-impl_swap_channels_for!(f32, "32f", {
+impl_swap_channels_for!(swap_into_32f, f32, "32f", {
         4 => npp_sys::nppiSwapChannels_32f_C4C3R_Ctx,
 });
 
-impl_swap_channels_for!(i32, "32s", {
+impl_swap_channels_for!(swap_into_32s, i32, "32s", {
         4 => npp_sys::nppiSwapChannels_32s_C4C3R_Ctx,
 });
 
-impl_swap_channels_for!(u8, "8u", {
+impl_swap_channels_for!(swap_into_8u, u8, "8u", {
         4 => npp_sys::nppiSwapChannels_8u_C4C3R_Ctx,
 });

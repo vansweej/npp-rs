@@ -76,3 +76,9 @@ pub mod test_helpers;
 
 #[cfg(test)]
 mod raw_tests;
+
+#[cfg(all(test, feature = "gpu"))]
+mod resize_roi_tests;
+
+#[cfg(all(test, feature = "gpu"))]
+mod swap_channels_roi_tests;
