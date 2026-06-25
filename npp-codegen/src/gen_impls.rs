@@ -5,7 +5,7 @@
 //! a fixture path, then emits the `impl_*_for!` invocations that should be
 //! pasted into `npp/src/*_generated.rs`.
 
-use crate::classify::{classify, classify_convert};
+use crate::classify::{classify, classify_convert, classify_convert_round};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -37,6 +37,9 @@ pub struct FamilyDescriptor {
     /// uses `classify_convert` and emits `impl_*_for!($src_ty, $dst_ty, "$src_tok",
     /// "$dst_tok", { … })`.
     pub dual_type: bool,
+    /// When true, the dual-type generator path uses `classify_convert_round`
+    /// instead of `classify_convert`. Default `false`.
+    pub dual_type_round: bool,
     /// Optional prefix for the engine-function-name argument (e.g. `"resize_into_"`).
     /// When `Some`, the generator emits `impl_*_for!(<engine_name>, <type>, ...)` where
     /// `<engine_name>` = `{prefix}{type_token}`. When `None`, no engine name is emitted
@@ -62,6 +65,7 @@ pub static RESIZE_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: None,
     dual_type: false,
+    dual_type_round: false,
     engine_fn_prefix: Some("resize_into_"),
 };
 
@@ -83,6 +87,7 @@ pub static SWAP_CHANNELS_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: None,
     dual_type: false,
+    dual_type_round: false,
     engine_fn_prefix: Some("swap_into_"),
 };
 
@@ -104,13 +109,15 @@ pub static MEAN_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: Some("nppiMeanGetBufferHostSize_"),
     dual_type: false,
+    dual_type_round: false,
     engine_fn_prefix: None,
 };
 
 /// Descriptor for the NPP Convert family (dual-type, no-rounding shape only).
 ///
 /// Covers the **no-rounding** Convert shape (`SRC+STEP, DST+STEP, SIZE`) **only**.
-/// Rounding-mode Convert variants (`NppRoundMode`) are **deferred to F5.2**.
+/// Rounding-mode Convert variants (`NppRoundMode`) are handled by
+/// [`CONVERT_ROUND_FAMILY`].
 pub static CONVERT_FAMILY: FamilyDescriptor = FamilyDescriptor {
     npp_prefix: "nppiConvert_",
     accepted_channels: &[1, 3, 4],
@@ -128,6 +135,37 @@ pub static CONVERT_FAMILY: FamilyDescriptor = FamilyDescriptor {
     ],
     get_buffer_host_size_prefix: None,
     dual_type: true,
+    dual_type_round: false,
+    engine_fn_prefix: None,
+};
+
+/// Descriptor for the NPP ConvertRounded family (rounding-mode, dual-type).
+///
+/// Covers the **rounding-mode** Convert shape (`SRC+STEP, DST+STEP, SIZE,
+/// MISC:NppRoundMode`) — narrowing conversions like `f32 → u8` that require
+/// an explicit `NppRoundMode` parameter.
+///
+/// Uses a separate classifier (`classify_convert_round`) to avoid colliding
+/// with `CONVERT_FAMILY`'s `classify_convert` (the symbol names are identical).
+/// The fixture is `nppiConvertRound_symbols.txt`.
+pub static CONVERT_ROUND_FAMILY: FamilyDescriptor = FamilyDescriptor {
+    npp_prefix: "nppiConvert_",
+    accepted_channels: &[1, 3, 4],
+    custom_variants: &[],
+    macro_name: "impl_convert_rounded_for",
+    rust_macro_path: "impl_convert_rounded_for",
+    expected_shape: "SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode",
+    skip_16f: true,
+    use_statements: &[
+        "use crate::error::{check_status, NppError};",
+        "use crate::image::CudaImage;",
+        "use crate::imageops::{ConvertRounded, RoundMode};",
+        "use crate::impl_convert_rounded_for;",
+        "use npp_sys::NppiSize;",
+    ],
+    get_buffer_host_size_prefix: None,
+    dual_type: true,
+    dual_type_round: true,
     engine_fn_prefix: None,
 };
 
@@ -190,7 +228,11 @@ pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> Str
 
     if family.dual_type {
         // ── Dual-type branch (Convert family) ──
-        let classified = classify_convert(&symbol_refs);
+        let classified = if family.dual_type_round {
+            classify_convert_round(&symbol_refs)
+        } else {
+            classify_convert(&symbol_refs)
+        };
 
         // Group by (type_token, dst_type_token), collecting (channel, variant) pairs.
         let mut dual_groups: BTreeMap<(&str, &str), BTreeMap<u8, String>> = BTreeMap::new();
@@ -343,7 +385,9 @@ pub fn validate_symbols_against_bindings(
     }
 
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified: Vec<crate::classify::ClassifiedSymbol> = if family.dual_type {
+    let classified: Vec<crate::classify::ClassifiedSymbol> = if family.dual_type_round {
+        crate::classify::classify_convert_round(&symbol_refs)
+    } else if family.dual_type {
         crate::classify::classify_convert(&symbol_refs)
     } else {
         classify(
@@ -762,6 +806,46 @@ mod tests {
     }
 
     #[test]
+    fn convert_round_generated_is_byte_identical() {
+        // Read the committed generated file
+        let committed_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("npp")
+            .join("src")
+            .join("convert_round_generated.rs");
+        let committed = fs::read_to_string(&committed_path)
+            .expect("failed to read committed convert_round_generated.rs");
+
+        // Generate from the fixture
+        let fixture = fixture_path("nppiConvertRound_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        let generated = generate_for_family(&CONVERT_ROUND_FAMILY, &symbols);
+
+        // Show diff if not identical
+        if committed != generated {
+            eprintln!(
+                "Committed length: {}, Generated length: {}",
+                committed.len(),
+                generated.len()
+            );
+            for (i, (cl, gl)) in committed.lines().zip(generated.lines()).enumerate() {
+                if cl != gl {
+                    eprintln!("First difference at line {}:", i + 1);
+                    eprintln!("  Committed: {:?}", cl);
+                    eprintln!("  Generated: {:?}", gl);
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            committed, generated,
+            "convert_round_generated.rs must be byte-identical"
+        );
+    }
+
+    #[test]
     fn swap_channels_corpus_is_generatable() {
         // Verify SwapChannels fixture can be read and generates valid output
         let fixture = fixture_path("nppiSwapChannels_symbols.txt");
@@ -920,6 +1004,54 @@ mod tests {
             assert!(
                 mismatches.is_empty(),
                 "All Convert symbols must match expected shape; {} mismatches found",
+                mismatches.len()
+            );
+        } else {
+            eprintln!("bindings.rs not found — skipping syn shape check");
+        }
+    }
+
+    #[test]
+    fn generate_convert_round_from_fixture() {
+        let fixture = fixture_path("nppiConvertRound_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        assert!(
+            !symbols.is_empty(),
+            "ConvertRound fixture must not be empty"
+        );
+        let generated = generate_for_family(&CONVERT_ROUND_FAMILY, &symbols);
+        assert!(!generated.is_empty(), "generated output must not be empty");
+
+        // Verify dual-type invocation for f32 -> u8
+        assert!(generated.contains("impl_convert_rounded_for!(f32, u8, \"32f\", \"8u\", {"));
+        // Verify _Ctx symbol paths
+        assert!(generated.contains("npp_sys::nppiConvert_32f8u_C3R_Ctx"));
+        // Verify no 16f tokens (skip_16f) — check for the type token as a
+        // quoted string literal rather than a bare substring, because valid
+        // symbols like `nppiConvert_32f16u_*` contain "f16" as a substring
+        // within the concatenated src+dst token.
+        assert!(!generated.contains("\"16f\""));
+    }
+
+    #[test]
+    fn convert_round_syn_shape_check() {
+        // Verify that ConvertRound symbols have the expected shape
+        // (SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode)
+        let bindings = find_bindings_rs();
+        if let Some(bindings_path) = bindings {
+            let fixture = fixture_path("nppiConvertRound_symbols.txt");
+            let (symbols, _) = read_fixture(&fixture);
+
+            let mismatches =
+                validate_symbols_against_bindings(&CONVERT_ROUND_FAMILY, &symbols, &bindings_path);
+            if !mismatches.is_empty() {
+                for m in &mismatches {
+                    eprintln!("Mismatch: {}", m);
+                }
+            }
+            assert!(
+                mismatches.is_empty(),
+                "All ConvertRound symbols must match expected shape; {} mismatches found",
                 mismatches.len()
             );
         } else {

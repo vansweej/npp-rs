@@ -107,6 +107,41 @@ pub trait ConvertTo<Dst: NppPixelType> {
     fn convert(&self, dst: &mut CudaImage<Dst>) -> Result<(), NppError>;
 }
 
+/// Rounding modes for narrowing pixel conversions (`ConvertRounded`).
+///
+/// Controls how fractional source values are converted to integer
+/// destination values. See NPP `NppRoundMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoundMode {
+    /// Round to nearest; ties to **even** (`NPP_RND_NEAR`). E.g. 0.5→0, 1.5→2.
+    Nearest,
+    /// Round to nearest; ties **away from zero** (`NPP_RND_FINANCIAL`). E.g. 0.5→1, -1.5→-2.
+    Financial,
+    /// Truncate **toward zero** (`NPP_RND_ZERO`). E.g. 1.9→1, -2.5→-2.
+    Zero,
+}
+
+/// Capability trait for narrowing cross-type conversion with explicit rounding.
+///
+/// Implemented only for `(src, dst)` pairs that NPP provides a rounding-mode
+/// `nppiConvert_*` symbol for (narrowing conversions, e.g. `f32 → u8`).
+/// Unsupported pairs simply have no impl — a compile-time error.
+///
+/// # Precondition
+/// `self` and `dst` must not overlap; dimensions/channels must match (else
+/// `NppError::InvalidArgument`). The CUDA device handle must outlive all
+/// buffers (C7). This is an **owned-buffer** operation — no ROI sub-image
+/// support (matching Convert/Normalize/Mean).
+pub trait ConvertRounded<Dst: NppPixelType> {
+    /// Convert `self` into `dst`, rounding fractional values per `mode`.
+    ///
+    /// # Errors
+    /// `NppError::InvalidArgument` on dimension/channel/channel-count mismatch;
+    /// `NppError::Npp` on NPP failure (including
+    /// `NPP_ROUND_MODE_NOT_SUPPORTED_ERROR` if the pair rejects `mode`).
+    fn convert_rounded(&self, dst: &mut CudaImage<Dst>, mode: RoundMode) -> Result<(), NppError>;
+}
+
 /// Capability trait for cross-type pixel normalization.
 ///
 /// Normalizes `self` (source image) into a destination image of a different pixel type,

@@ -1,0 +1,31 @@
+# Rounding-mode Convert symbols from CUDA 12.9 — validated against bindings.rs.
+# Shape: SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode (narrowing conversions only).
+# Scaled rounding-mode variants (shape + CONST_SCALAR) are deferred to F5.4.
+# 16f is excluded from the safe layer.
+#
+# This is a DRAFT — validated against bindings.rs via convert_round_syn_shape_check.
+# Do not invent symbols; correct the fixture if a symbol is absent.
+nppiConvert_32f8u_C1R
+nppiConvert_32f8u_C1R_Ctx
+nppiConvert_32f8u_C3R
+nppiConvert_32f8u_C3R_Ctx
+nppiConvert_32f8u_C4R
+nppiConvert_32f8u_C4R_Ctx
+nppiConvert_32f8s_C1R
+nppiConvert_32f8s_C1R_Ctx
+nppiConvert_32f8s_C3R
+nppiConvert_32f8s_C3R_Ctx
+nppiConvert_32f8s_C4R
+nppiConvert_32f8s_C4R_Ctx
+nppiConvert_32f16u_C1R
+nppiConvert_32f16u_C1R_Ctx
+nppiConvert_32f16u_C3R
+nppiConvert_32f16u_C3R_Ctx
+nppiConvert_32f16u_C4R
+nppiConvert_32f16u_C4R_Ctx
+nppiConvert_32f16s_C1R
+nppiConvert_32f16s_C1R_Ctx
+nppiConvert_32f16s_C3R
+nppiConvert_32f16s_C3R_Ctx
+nppiConvert_32f16s_C4R
+nppiConvert_32f16s_C4R_Ctx

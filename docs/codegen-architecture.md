@@ -114,6 +114,39 @@ impl_convert_for!(u8, f32, "8u", "32f", {
 | Mean | `nppiMean_` | C1, C3, C4 | — | `nppiMeanGetBufferHostSize_` | `SRC+STEP, SIZE, SCRATCH_BUF, OUT_SCALAR` | No |
 | Convert | `nppiConvert_` | C1, C3, C4 | — | — | `SRC+STEP, DST+STEP, SIZE` | Yes |
 | Normalize | `nppiConvert_` (reused) | C1, C3, C4 | — | — | `SRC+STEP, DST+STEP, SIZE` | Yes (dual-type, reused from Convert) |
+| ConvertRounded | `nppiConvert_` | C1, C3, C4 | — | — | `SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode` | Yes |
+
+## ConvertRounded: narrowing with explicit rounding
+
+**ConvertRounded** is the rounding-mode counterpart of `ConvertTo` — it handles
+**narrowing** conversions (e.g. `f32 → u8`) that require an explicit
+`NppRoundMode` parameter. It follows the same dual-type codegen pattern as
+Convert, with three differences:
+
+1. **Separate fixture and classifier.** The round-mode `nppiConvert_*` symbols
+   share `{src}{dst}_CxR` names with the no-rounding Convert symbols already in
+   `nppiConvert_symbols.txt`. To avoid colliding with `classify_convert` (used by
+   both `CONVERT_FAMILY` and Normalize against the same fixture), ConvertRounded
+   uses its own `classify_convert_round` function and a separate fixture file
+   (`nppiConvertRound_symbols.txt`). The shape-check
+   (`convert_round_syn_shape_check`) is the load-bearing runtime validation that
+   a fixture symbol truly has the `MISC:NppRoundMode` parameter shape.
+
+2. **The `dual_type_round` selector.** `FamilyDescriptor` carries a
+   `dual_type_round: bool` field (default `false`). When `true`,
+   `generate_for_family()` dispatches to `classify_convert_round` instead of
+   `classify_convert`. The selector is applied at both call sites in
+   `gen_impls.rs` (the main generator and `validate_symbols_against_bindings`).
+
+3. **The macro injects the round-mode argument.** The `impl_convert_rounded_for!`
+   macro emits a method with signature
+   `fn convert_rounded(&self, dst: &mut CudaImage<Dst>, mode: RoundMode) -> ...`
+   and inserts `$crate::convert_round_ops::round_mode(mode)` between the
+   `NppiSize` parameter and the stream-context parameter in the NPP FFI call.
+   The generator emits identical invocation syntax to `impl_convert_for!`.
+
+Scaled rounding-mode variants (shape `..., MISC:NppRoundMode, CONST_SCALAR`) are
+deferred to **F5.4**.
 
 ## Normalize: convert-then-scale
 
