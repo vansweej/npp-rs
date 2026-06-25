@@ -41,7 +41,11 @@ fn make_input() -> Vec<f32> {
     data
 }
 
-const EXPECTED: &[u8] = &[];
+/// Golden output for chained resize → ConvertRounded (Nearest), pinned from GPU.
+///
+/// Pinned: 2026-06-25 — f32 gradient downsample (linear interp) then rounding.
+/// 12 pixels (4×3 output, 1-channel).
+const EXPECTED: &[u8] = &[0, 1, 1, 2, 1, 1, 2, 2, 1, 2, 2, 3];
 
 #[test]
 fn chained_resize_then_convert_rounded_produces_correct_pixels() {

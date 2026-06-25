@@ -42,18 +42,21 @@ fn make_input() -> Vec<f32> {
 
 /// Golden output for `RoundMode::Nearest`, pinned from GPU.
 ///
-/// Pinned: (not yet pinned — run on GPU host and fill in).
-const EXPECTED_NEAR: &[u8] = &[];
+/// Pinned: 2026-06-25 — 0.5→0 (tie→even), 2.5→2 (tie→even), 1.9→2 (std),
+///         5.0→5 (exact), 0.4→0 (trunc), 3.5→4 (tie→even).
+const EXPECTED_NEAR: &[u8] = &[0, 2, 2, 5, 0, 4, 0, 2, 2, 5, 0, 4, 0, 2, 2, 5, 0, 4];
 
 /// Golden output for `RoundMode::Financial`, pinned from GPU.
 ///
-/// Pinned: (not yet pinned — run on GPU host and fill in).
-const EXPECTED_FIN: &[u8] = &[];
+/// Pinned: 2026-06-25 — 0.5→1 (half-up), 2.5→3 (half-up), 1.9→2 (std),
+///         5.0→5 (exact), 0.4→0 (trunc), 3.5→4 (half-up→4 not 3).
+const EXPECTED_FIN: &[u8] = &[1, 3, 2, 5, 0, 4, 1, 3, 2, 5, 0, 4, 1, 3, 2, 5, 0, 4];
 
 /// Golden output for `RoundMode::Zero`, pinned from GPU.
 ///
-/// Pinned: (not yet pinned — run on GPU host and fill in).
-const EXPECTED_ZERO: &[u8] = &[];
+/// Pinned: 2026-06-25 — 0.5→0 (trunc), 2.5→2 (trunc), 1.9→1 (trunc),
+///         5.0→5 (exact), 0.4→0 (trunc), 3.5→3 (trunc).
+const EXPECTED_ZERO: &[u8] = &[0, 2, 1, 5, 0, 3, 0, 2, 1, 5, 0, 3, 0, 2, 1, 5, 0, 3];
 
 #[test]
 fn test_golden_convert_round_32f8u_nearest() {
