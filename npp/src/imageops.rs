@@ -142,6 +142,42 @@ pub trait ConvertRounded<Dst: NppPixelType> {
     fn convert_rounded(&self, dst: &mut CudaImage<Dst>, mode: RoundMode) -> Result<(), NppError>;
 }
 
+/// Capability trait for narrowing cross-type conversion with explicit rounding
+/// and integer scaling factor.
+///
+/// Implemented only for `(src, dst)` pairs that NPP provides a scaled rounding-mode
+/// `nppiConvert_*_C1RSfs` symbol for (single-channel narrowing conversions with
+/// fixed-power-of-two scaling, e.g. `f32 → u8`). Unsupported pairs simply have no
+/// impl — a compile-time error.
+///
+/// The `scale_factor` parameter is an integer scaling factor applied by NPP before
+/// rounding and saturation. Per NPP `Sfs` convention, this acts as a power-of-two
+/// exponent (right-shift for narrowing conversions), though callers should treat
+/// it as opaque — refer to NPP documentation for type-pair-specific semantics.
+///
+/// # Precondition
+///
+/// `self` and `dst` must not overlap; dimensions/channels must match (else
+/// `NppError::InvalidArgument`). Only single-channel (`C1`) is supported — NPP
+/// does not expose `C3RSfs` or `C4RSfs` variants. The CUDA device handle must
+/// outlive all buffers (C7). This is an **owned-buffer** operation — no ROI
+/// sub-image support.
+pub trait ConvertRoundedScaled<Dst: NppPixelType> {
+    /// Convert `self` into `dst`, rounding fractional values per `mode` and
+    /// scaling by `scale_factor`.
+    ///
+    /// # Errors
+    /// `NppError::InvalidArgument` on dimension/channel/channel-count mismatch;
+    /// `NppError::Npp` on NPP failure (including
+    /// `NPP_ROUND_MODE_NOT_SUPPORTED_ERROR` if the pair rejects `mode`).
+    fn convert_rounded_scaled(
+        &self,
+        dst: &mut CudaImage<Dst>,
+        mode: RoundMode,
+        scale_factor: i32,
+    ) -> Result<(), NppError>;
+}
+
 /// Capability trait for cross-type pixel normalization.
 ///
 /// Normalizes `self` (source image) into a destination image of a different pixel type,

@@ -10,10 +10,12 @@
 //! has no trait impl, making it a compile-time error.
 //!
 //! Cross-type operations ([`ConvertTo`](crate::imageops::ConvertTo), [`Normalize`](crate::imageops::Normalize),
-//! [`ConvertRounded`](crate::imageops::ConvertRounded))
+//! [`ConvertRounded`](crate::imageops::ConvertRounded),
+//! [`ConvertRoundedScaled`](crate::imageops::ConvertRoundedScaled))
 //! convert between different pixel types (e.g. `u8 → f32`). Normalize is generated
 //! for integer→f32 pairs; `ConvertRounded` handles narrowing conversions with
-//! explicit rounding mode (e.g. `f32 → u8`).
+//! explicit rounding mode (e.g. `f32 → u8`); `ConvertRoundedScaled` adds an
+//! integer scaling factor (`C1RSfs` family).
 //!
 //! Round-trip to host memory uses `TryFrom<&CudaImage<T>> for Vec<T>`.
 //! There is no `image` crate dependency in the core.
@@ -46,12 +48,16 @@ pub mod convert_round_generated;
 pub mod convert_round_macros;
 /// Round-mode conversion helper — translates `RoundMode` to raw NPP constants.
 pub mod convert_round_ops;
+/// Generated `impl ConvertRoundedScaled` for all NPP-supported C1RSfs pairs (committed artifact).
+pub mod convert_round_scaled_generated;
+/// Macro to generate `impl ConvertRoundedScaled` for cross-type scaled rounding-mode conversions.
+pub mod convert_round_scaled_macros;
 pub mod cuda;
 /// NPP error types and the `check_status` helper.
 pub mod error;
 /// Core GPU image type with `NppPixelType` marker trait.
 pub mod image;
-/// Capability traits (`Resize`, `SwapChannels`, `ConvertTo`, `ConvertRounded`, `Normalize`).
+/// Capability traits (`Resize`, `SwapChannels`, `ConvertTo`, `ConvertRounded`, `ConvertRoundedScaled`, `Normalize`).
 pub mod imageops;
 /// Packed memory layout description.
 pub mod layout;
