@@ -282,7 +282,9 @@ pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> Str
 
     if family.dual_type {
         // ── Dual-type branch (Convert family) ──
-        let classified = if family.dual_type_round {
+        let classified = if family.dual_type_round_scaled {
+            classify_convert_round_scaled(&symbol_refs)
+        } else if family.dual_type_round {
             classify_convert_round(&symbol_refs)
         } else {
             classify_convert(&symbol_refs)
@@ -439,7 +441,9 @@ pub fn validate_symbols_against_bindings(
     }
 
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
-    let classified: Vec<crate::classify::ClassifiedSymbol> = if family.dual_type_round {
+    let classified: Vec<crate::classify::ClassifiedSymbol> = if family.dual_type_round_scaled {
+        crate::classify::classify_convert_round_scaled(&symbol_refs)
+    } else if family.dual_type_round {
         crate::classify::classify_convert_round(&symbol_refs)
     } else if family.dual_type {
         crate::classify::classify_convert(&symbol_refs)
@@ -1111,5 +1115,105 @@ mod tests {
         } else {
             eprintln!("bindings.rs not found — skipping syn shape check");
         }
+    }
+
+    // ── ConvertRoundedScaled (dual-type, round-mode, scaled) tests ──
+
+    #[test]
+    fn convert_round_scaled_generated_is_byte_identical() {
+        // Read the committed generated file
+        let committed_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("npp")
+            .join("src")
+            .join("convert_round_scaled_generated.rs");
+        let committed = fs::read_to_string(&committed_path)
+            .expect("failed to read committed convert_round_scaled_generated.rs");
+
+        // Generate from the fixture
+        let fixture = fixture_path("nppiConvertRoundScaled_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        let generated = generate_for_family(&CONVERT_ROUND_SCALED_FAMILY, &symbols);
+
+        // Show diff if not identical
+        if committed != generated {
+            eprintln!(
+                "Committed length: {}, Generated length: {}",
+                committed.len(),
+                generated.len()
+            );
+            for (i, (cl, gl)) in committed.lines().zip(generated.lines()).enumerate() {
+                if cl != gl {
+                    eprintln!("First difference at line {}:", i + 1);
+                    eprintln!("  Committed: {:?}", cl);
+                    eprintln!("  Generated: {:?}", gl);
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            committed, generated,
+            "convert_round_scaled_generated.rs must be byte-identical"
+        );
+    }
+
+    #[test]
+    fn convert_round_scaled_corpus_is_generatable() {
+        // Verify that at least one C1RSfs symbol reaches the classifier from bindings.rs
+        let bindings = find_bindings_rs();
+        if let Some(bindings_path) = bindings {
+            let content = fs::read_to_string(&bindings_path).expect("failed to read bindings.rs");
+
+            // Find all C1RSfs symbols in bindings.rs
+            let symbols: Vec<String> = content
+                .lines()
+                .filter(|l| l.contains("C1RSfs") && l.starts_with("nppiConvert"))
+                .map(|l| {
+                    // Extract the function name (before the first '(')
+                    l.split_once('(')
+                        .map(|(name, _)| name.trim().to_string())
+                        .unwrap_or_default()
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if symbols.is_empty() {
+                eprintln!("No C1RSfs symbols found in bindings.rs — skipping corpus test");
+                return;
+            }
+
+            let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
+            let classified = classify_convert_round_scaled(&symbol_refs);
+            assert!(
+                !classified.is_empty(),
+                "classify_convert_round_scaled must classify at least one symbol from live bindings"
+            );
+        } else {
+            eprintln!("bindings.rs not found — skipping corpus test");
+        }
+    }
+
+    #[test]
+    fn generate_convert_round_scaled_from_fixture() {
+        let fixture = fixture_path("nppiConvertRoundScaled_symbols.txt");
+        let (symbols, _) = read_fixture(&fixture);
+        assert!(
+            !symbols.is_empty(),
+            "ConvertRoundScaled fixture must not be empty"
+        );
+        let generated = generate_for_family(&CONVERT_ROUND_SCALED_FAMILY, &symbols);
+        assert!(!generated.is_empty(), "generated output must not be empty");
+
+        // Verify dual-type invocation for u8 -> i8
+        assert!(generated.contains("impl_convert_rounded_scaled_for!(u8, i8, \"8u\", \"8s\", {"));
+        // Verify _Ctx symbol paths (C1RSfs only — single channel)
+        assert!(generated.contains("npp_sys::nppiConvert_8u8s_C1RSfs_Ctx"));
+        // Verify no 16f tokens (skip_16f)
+        assert!(!generated.contains("\"16f\""));
+        // Verify single-channel only — no C3 or C4 arms
+        assert!(!generated.contains("C3R"));
+        assert!(!generated.contains("C4R"));
     }
 }
