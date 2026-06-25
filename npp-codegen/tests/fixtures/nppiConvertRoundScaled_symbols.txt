@@ -1,0 +1,38 @@
+# Scaled rounding-mode Convert symbols from CUDA 12.9 — single-channel only.
+# Shape: SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode, CONST_SCALAR
+# C1RSfs only — no C3RSfs/C4RSfs exist in NPP.
+# 16f is excluded from the safe layer.
+nppiConvert_8u8s_C1RSfs
+nppiConvert_8u8s_C1RSfs_Ctx
+nppiConvert_16s8s_C1RSfs
+nppiConvert_16s8s_C1RSfs_Ctx
+nppiConvert_16u8s_C1RSfs
+nppiConvert_16u8s_C1RSfs_Ctx
+nppiConvert_16u16s_C1RSfs
+nppiConvert_16u16s_C1RSfs_Ctx
+nppiConvert_32f8s_C1RSfs
+nppiConvert_32f8s_C1RSfs_Ctx
+nppiConvert_32f8u_C1RSfs
+nppiConvert_32f8u_C1RSfs_Ctx
+nppiConvert_32f16u_C1RSfs
+nppiConvert_32f16u_C1RSfs_Ctx
+nppiConvert_32f16s_C1RSfs
+nppiConvert_32f16s_C1RSfs_Ctx
+nppiConvert_32f32u_C1RSfs
+nppiConvert_32f32u_C1RSfs_Ctx
+nppiConvert_32f32s_C1RSfs
+nppiConvert_32f32s_C1RSfs_Ctx
+nppiConvert_32s16u_C1RSfs
+nppiConvert_32s16u_C1RSfs_Ctx
+nppiConvert_32s16s_C1RSfs
+nppiConvert_32s16s_C1RSfs_Ctx
+nppiConvert_32u8u_C1RSfs
+nppiConvert_32u8u_C1RSfs_Ctx
+nppiConvert_32u8s_C1RSfs
+nppiConvert_32u8s_C1RSfs_Ctx
+nppiConvert_32u16u_C1RSfs
+nppiConvert_32u16u_C1RSfs_Ctx
+nppiConvert_32u16s_C1RSfs
+nppiConvert_32u16s_C1RSfs_Ctx
+nppiConvert_32u32s_C1RSfs
+nppiConvert_32u32s_C1RSfs_Ctx

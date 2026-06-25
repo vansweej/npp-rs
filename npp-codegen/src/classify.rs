@@ -393,6 +393,111 @@ pub fn classify_convert_round(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
     result
 }
 
+/// Classify NPP Convert symbols using the dual-type two-token split algorithm.
+///
+/// **Intended for the scaled rounding-mode `nppiConvert_*C1RSfs` group only.**
+/// Accepts only `C1RSfs` and `C1RSfs_Ctx` variants (single-channel scaled
+/// rounding-mode convert). Multi-channel variants (`C3R*`, `C4R*`) are rejected
+/// because NPP does not expose `C3RSfs` or `C4RSfs` for scaled convert.
+///
+/// Otherwise functionally identical to [`classify_convert_round`]: same two-token
+/// split, same `_Ctx` preference, same `op = "Convert"` and `dst_type_token = Some(dst)`.
+pub fn classify_convert_round_scaled(symbols: &[&str]) -> Vec<ClassifiedSymbol> {
+    const PREFIX: &str = "nppiConvert_";
+    const ACCEPTED_CHS: &[u8] = &[1];
+
+    // First pass: collect all valid candidates grouped by (src, dst, channels)
+    let mut candidates: std::collections::HashMap<(String, String, u8), Vec<(String, String)>> =
+        std::collections::HashMap::new();
+
+    for raw in symbols {
+        let s = match raw.strip_prefix(PREFIX) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Reject symbols with extra keywords after the prefix
+        if !s.starts_with(|c: char| c.is_ascii_digit()) {
+            continue; // e.g. "nppiConvertScale_…" — not bare Convert
+        }
+
+        // Split the segment at the first '_' to get the two-token concatenation
+        let (token_segment, rest) = match s.split_once('_') {
+            Some((t, r)) => (t, r),
+            None => continue,
+        };
+
+        // ── Two-token split ──
+        let mut valid_splits: Vec<(usize, &str, &str)> = Vec::new();
+        // Iterate every split point k (1 .. len)
+        for k in 1..token_segment.len() {
+            let src_candidate = &token_segment[..k];
+            let dst_candidate = &token_segment[k..];
+            if NPP_TYPE_TOKENS.contains(&src_candidate) && NPP_TYPE_TOKENS.contains(&dst_candidate)
+            {
+                valid_splits.push((k, src_candidate, dst_candidate));
+            }
+        }
+
+        let (src_token, dst_token) = match valid_splits.len() {
+            0 => continue, // zero valid splits: reject
+            1 => (valid_splits[0].1.to_string(), valid_splits[0].2.to_string()),
+            n => {
+                // Multiple valid splits: ambiguity bug
+                debug_assert!(
+                    false,
+                    "classify_convert_round_scaled: {} valid splits for symbol {} (segment: {}) — \
+                     two-token split ambiguity",
+                    n, raw, token_segment
+                );
+                // Fall through — reject in release builds when debug_assert is elided
+                continue;
+            }
+        };
+
+        // ── Variant matching ──
+        // Accept only C1RSfs/C1RSfs_Ctx (single-channel scaled rounding-mode)
+        let (channels, variant_base): (u8, &str) = match rest {
+            "C1RSfs" if ACCEPTED_CHS.contains(&1) => (1, "C1RSfs"),
+            "C1RSfs_Ctx" if ACCEPTED_CHS.contains(&1) => (1, "C1RSfs_Ctx"),
+            _ => continue,
+        };
+
+        candidates
+            .entry((src_token.clone(), dst_token.clone(), channels))
+            .or_default()
+            .push((variant_base.to_string(), raw.to_string()));
+    }
+
+    // Second pass: for each (src, dst, channels) group, prefer _Ctx if it exists
+    let mut result = Vec::new();
+    for ((src_token, dst_token, channels), variants) in candidates {
+        let (variant, raw) =
+            if let Some((v, r)) = variants.iter().find(|(v, _)| v.ends_with("_Ctx")) {
+                (v.clone(), r.clone())
+            } else {
+                let (v, r) = &variants[0];
+                (v.clone(), r.clone())
+            };
+
+        result.push(ClassifiedSymbol {
+            raw,
+            op: "Convert".to_string(),
+            type_token: src_token,
+            dst_type_token: Some(dst_token),
+            channels,
+            variant,
+        });
+    }
+
+    result
+}
+
+/// Expected shape string for scaled rounding-mode convert symbols.
+/// Shape: SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode, CONST_SCALAR
+pub const CONVERT_ROUND_SCALED_SHAPE: &str =
+    "SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode, CONST_SCALAR";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -807,5 +912,76 @@ mod tests {
     fn convert_round_reject_non_standard_variant() {
         // C4C3R is not a standard channel variant for Convert
         assert!(classify_convert_round(&["nppiConvert_32f8u_C4C3R"]).is_empty());
+    }
+
+    // ── ConvertRoundedScaled (dual-type, round-mode, scaled) tests ──
+
+    #[test]
+    fn convert_round_scaled_accept_8u32f_c1rsfs() {
+        let result = classify_convert_round_scaled(&["nppiConvert_8u32f_C1RSfs"]);
+        assert_eq!(result.len(), 1, "expected one match");
+        assert_eq!(result[0].type_token, "8u");
+        assert_eq!(result[0].dst_type_token, Some("32f".to_string()));
+        assert_eq!(result[0].channels, 1);
+        assert_eq!(result[0].op, "Convert");
+        assert_eq!(result[0].variant, "C1RSfs");
+        assert_eq!(result[0].raw, "nppiConvert_8u32f_C1RSfs");
+    }
+
+    #[test]
+    fn convert_round_scaled_prefer_ctx_variant() {
+        // When both C1RSfs and C1RSfs_Ctx exist, prefer _Ctx
+        let result = classify_convert_round_scaled(&[
+            "nppiConvert_8u32f_C1RSfs",
+            "nppiConvert_8u32f_C1RSfs_Ctx",
+        ]);
+        assert_eq!(
+            result.len(),
+            1,
+            "should produce one result per (src, dst, channels) triple"
+        );
+        assert_eq!(
+            result[0].variant, "C1RSfs_Ctx",
+            "should prefer _Ctx variant"
+        );
+        assert_eq!(result[0].raw, "nppiConvert_8u32f_C1RSfs_Ctx");
+        assert_eq!(result[0].dst_type_token, Some("32f".to_string()));
+    }
+
+    #[test]
+    fn convert_round_scaled_reject_single_token() {
+        // nppiConvert_8u_C1RSfs has only one token (8u) — zero valid splits
+        assert!(classify_convert_round_scaled(&["nppiConvert_8u_C1RSfs"]).is_empty());
+    }
+
+    #[test]
+    fn convert_round_scaled_reject_c3r_variant() {
+        // C3RSfs does not exist — C1RSfs is the only scaled variant
+        assert!(
+            classify_convert_round_scaled(&["nppiConvert_32f8u_C3R"]).is_empty(),
+            "C3R should be rejected (not C1RSfs)"
+        );
+    }
+
+    #[test]
+    fn convert_round_scaled_reject_c4r_variant() {
+        // C4RSfs does not exist
+        assert!(
+            classify_convert_round_scaled(&["nppiConvert_32f8u_C4R"]).is_empty(),
+            "C4R should be rejected (not C1RSfs)"
+        );
+    }
+
+    #[test]
+    fn convert_round_scaled_reject_16f_symbols() {
+        // 16f is excluded from the token list
+        assert!(
+            classify_convert_round_scaled(&["nppiConvert_32f16f_C1RSfs"]).is_empty(),
+            "32f16f should be rejected (16f excluded)"
+        );
+        assert!(
+            classify_convert_round_scaled(&["nppiConvert_16f32f_C1RSfs"]).is_empty(),
+            "16f32f should be rejected (16f excluded)"
+        );
     }
 }

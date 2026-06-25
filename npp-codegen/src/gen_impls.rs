@@ -5,7 +5,10 @@
 //! a fixture path, then emits the `impl_*_for!` invocations that should be
 //! pasted into `npp/src/*_generated.rs`.
 
-use crate::classify::{classify, classify_convert, classify_convert_round};
+use crate::classify::{
+    classify, classify_convert, classify_convert_round, classify_convert_round_scaled,
+    CONVERT_ROUND_SCALED_SHAPE,
+};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -187,6 +190,39 @@ pub static CONVERT_ROUND_FAMILY: FamilyDescriptor = FamilyDescriptor {
     example_name: "convert_round_impls",
 };
 
+/// Descriptor for the NPP ConvertRoundedScaled family (scaled rounding-mode,
+/// dual-type, single-channel only).
+///
+/// Covers the **scaled rounding-mode** Convert shape (`SRC+STEP, DST+STEP, SIZE,
+/// MISC:NppRoundMode, CONST_SCALAR`) — narrowing/widening conversions with both
+/// a round mode and a scale factor. Only single-channel (`C1RSfs`) — NPP does
+/// not expose `C3RSfs`/`C4RSfs`.
+///
+/// Uses a separate classifier (`classify_convert_round_scaled`) to match only
+/// `C1RSfs`/`C1RSfs_Ctx` variants. The fixture is `nppiConvertRoundScaled_symbols.txt`.
+pub static CONVERT_ROUND_SCALED_FAMILY: FamilyDescriptor = FamilyDescriptor {
+    npp_prefix: "nppiConvert_",
+    accepted_channels: &[1],
+    custom_variants: &[],
+    macro_name: "impl_convert_rounded_scaled_for",
+    rust_macro_path: "impl_convert_rounded_scaled_for",
+    expected_shape: CONVERT_ROUND_SCALED_SHAPE,
+    skip_16f: true,
+    use_statements: &[
+        "use crate::error::{check_status, NppError};",
+        "use crate::image::CudaImage;",
+        "use crate::imageops::{ConvertRoundedScaled, RoundMode};",
+        "use crate::impl_convert_rounded_scaled_for;",
+        "use npp_sys::NppiSize;",
+    ],
+    get_buffer_host_size_prefix: None,
+    dual_type: true,
+    dual_type_round: false,
+    dual_type_round_scaled: true,
+    engine_fn_prefix: None,
+    example_name: "convert_round_scaled_impls",
+};
+
 /// Map NPP type token to Rust type.
 pub fn npp_type_to_rust(token: &str) -> Option<&'static str> {
     match token {
@@ -220,14 +256,14 @@ pub fn generate_for_family(family: &FamilyDescriptor, symbols: &[String]) -> Str
     let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
 
     // Extract the family name from the prefix (e.g., "Resize" from "nppiResize_"
-    // or "Convert" from "nppiConvert_")
+    // or "Convert" from "nppiConvert_") — used for symbol name construction below.
     let family_name = family
         .npp_prefix
         .strip_prefix("nppi")
         .and_then(|s| s.strip_suffix("_"))
         .unwrap_or("");
 
-    // Emit header guard comment
+    // Emit header guard comment using the family's example_name field
     let mut output = String::new();
     output.push_str("//! GENERATED — re-run `cargo run --example gen_");
     output.push_str(family.example_name);
