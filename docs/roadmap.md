@@ -287,20 +287,55 @@ split to F5.3.
 
 ---
 
-## F5.3 — Rounding-mode ConvertTo (API change) *(deferred)*
+## F5.3 — Rounding-mode `ConvertRounded<Dst>` (additive) *(implemented)*
 
-**What:** Add the rounding-mode `nppiConvert_*` variants — the 20
-`NppRoundMode` functions (shape `SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode`)
-and the 17 scaled functions (shape `SRC+STEP, DST+STEP, SIZE,
-MISC:NppRoundMode, CONST_SCALAR`) — which requires a **breaking public API
-change** to the `ConvertTo` trait (a rounding-mode parameter, and a scale-factor
-parameter for the scaled group).
+**What:** Add the rounding-mode `nppiConvert_*` variants — the narrowing
+conversions with explicit `NppRoundMode` parameter (shape `SRC+STEP, DST+STEP,
+SIZE, MISC:NppRoundMode`) — as a **new, non-breaking `ConvertRounded<Dst>`
+capability trait**, not a modification to `ConvertTo`.
 
-**Why deferred:** F5.2 chose the additive Normalize half to stay shippable
-without an API change; the rounding half is a self-contained API-breaking unit
-~the size of F5.1.
+**Key design decisions:**
+- **Additive**, not breaking — a separate `ConvertRounded<Dst>` trait, matching
+  the one-trait-per-capability house style (`ConvertTo`, `Normalize`).
+- **Round-mode group only**; scaled variants (`+ CONST_SCALAR`) deferred to F5.4.
+- **Separate fixture and classifier** (`nppiConvertRound_symbols.txt` +
+  `classify_convert_round`) because round-mode symbols share `{src}{dst}_CxR`
+  names with no-rounding Convert symbols, and `classify_convert` is already used
+  by both `CONVERT_FAMILY` and Normalize against the same fixture.
+- **`dual_type_round` selector** on `FamilyDescriptor` — when `true`,
+  `generate_for_family()` dispatches to `classify_convert_round` instead of
+  `classify_convert`.
+- **The macro injects the round-mode argument** — `impl_convert_rounded_for!`
+  inserts `round_mode(mode)` between the `NppiSize` param and the stream context.
+
+**Committed artifacts:**
+- `RoundMode` enum, `ConvertRounded<Dst>` trait in `imageops.rs`
+- `convert_round_ops.rs` translator, `convert_round_macros.rs` macro
+- `convert_round_generated.rs` (4 narrowing pairs: `f32→{u8,i8,u16,i16}`)
+- `classify_convert_round` in `classify.rs`, `CONVERT_ROUND_FAMILY` in `gen_impls.rs`
+- `nppiConvertRound_symbols.txt` fixture, `gen_convert_round_impls.rs` example
+- GPU-gated golden tests (3 per-mode + 1 chained `_Ctx`)
 
 **Dependencies:** F5.1 (dual-type codegen path) and F5.2 (Normalize precedent).
+
+---
+
+## F5.4 — Scaled rounding-mode Convert (deferred)
+
+**What:** Add the scaled rounding-mode `nppiConvert_*` variants — the 17
+functions with shape `SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode,
+CONST_SCALAR`. Requires extending `shape.rs`'s `classify_param` to detect the
+scale-factor parameter by name (see `shape.rs:212-216` for the existing
+`Divisor`/`Value`/`Constant`/`ScaleFactor` heuristics — if the scale arg is
+named differently, `derive_shape` misclassifies it as `MISC:i32`, and the
+shape-check rejects a valid symbol).
+
+**Why deferred:** The scaled group's `CONST_SCALAR` role in `shape.rs:212-216`
+is detected by parameter-name heuristics; F5.4 must extend `classify_param`
+first. The round-mode group (F5.3) was shipped independently to keep each
+delivery self-contained.
+
+**Dependencies:** F5.3 (`CONVERT_ROUND_FAMILY` infrastructure, `RoundMode` enum).
 
 ---
 
@@ -466,7 +501,8 @@ patterns being mature enough to reuse the approach.
 ## Suggested rough sequencing
 
 ```
-M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops) ──> F5.1 (ConvertTo codegen) ──> F5.2 (Normalize codegen) ──> F5.3 (rounding-mode ConvertTo)
+M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops) ──> F5.1 (ConvertTo codegen) ──> F5.2 (Normalize codegen) ──> F5.3 (ConvertRounded, DONE)
+     │      │                                                   └────────────────> F5.4 (scaled rounding, deferred)
      │      │                              └────────────────> F6 (correctness hardening) ──> F6.2 (ROI sub-image support, DONE)
      ├─> F7 (release validation)          [type seal did half in M1]
      ├─> F8 (streams/execution context)   [DONE]
@@ -475,13 +511,13 @@ M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (c
      └─> F9 (npps signal ops) ── after F1
 ```
 
-**Sequencing note:** F1, F2, F5.1, F5.2, F6, F6.2, and F8 (core) are complete and merged on `main`.
+**Sequencing note:** F1, F2, F5.1, F5.2, F5.3, F6, F6.2, and F8 (core) are complete and merged on `main`.
 F3 (image-rs) and F4 (graphynx) are **dropped from this repository** — ecosystem
 integration moves to separate downstream repos. F10 (IPP) is a separate project.
 The cross-cutting F8↔F1 signature-shaping risk (the load-bearing constraint that
 shaped the original roadmap) is **resolved**: F8 shipped after F1/F2 with a clean
 `_Ctx` regeneration, so the feared "regenerate when streams land" event already
-occurred and is closed. All remaining features (F5, F5.3, F6.1, F7, F8.1, F8.2, F9)
+occurred and is closed. All remaining features (F5.4, F6.1, F7, F8.1, F8.2, F9)
 are independent — the next phase is a free choice.
 
 ---
