@@ -18,10 +18,15 @@ thiserror = "2"
 # half = "2"  # TODO(M2): uncomment for half::f16 NppPixelType support
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["plotters"] }
 pretty_assertions = "1.0.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+
+[[bench]]
+name = "bench_resize_correctness"
+harness = false
 
 [features]
 default = []
