@@ -56,9 +56,9 @@ macro_rules! impl_convert_for {
         /// Because src and dst have different element types, each has its own
         /// step calculation.
         ///
-        /// The raw pointer for both src and dst is offset by `layout.img_index` so
-        /// this impl works correctly on sub-images created via `CudaImage::sub_image`
-        /// (whose `layout.img_index` carries the parent's offset).
+            /// NOTE: sub-image support (offset-in-slice) is **deferred to F6.2**.
+            /// This impl operates on the full owned buffer only (`img_index` is always 0
+            /// for owned images; the pointer arithmetic does not apply a `img_index` offset).
         ///
         /// # Precondition
         ///
@@ -92,12 +92,12 @@ macro_rules! impl_convert_for {
                 let dst_step_bytes =
                     (dst.layout.height_stride * std::mem::size_of::<$dst_ty>()) as i32;
 
-                // ── Raw pointers via DevicePtr/DevicePtrMut (handles sub-images) ──
+                // ── Raw pointers via DevicePtr/DevicePtrMut ──
                 let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
-                let src_ptr = (src_base + self.layout.img_index as u64) as *const $src_ty;
+                let src_ptr = *src_base as *const $src_ty;
 
                 let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
-                let dst_ptr = (*dst_base + dst.layout.img_index as u64) as *mut $dst_ty;
+                let dst_ptr = *dst_base as *mut $dst_ty;
 
                 let nppi_size = NppiSize {
                     width: dst.width() as i32,

@@ -33,9 +33,9 @@
 ///
 /// # Sub-image support
 ///
-/// The raw pointer is offset by `dst.layout.img_index`, so this impl works
-/// correctly on sub-images created via `CudaImage::sub_image` (whose
-/// `layout.img_index` carries the parent's offset).
+/// NOTE: sub-image support (offset-in-slice) is **deferred to F6.2**.
+/// This impl operates on the full owned buffer only (`img_index` is always 0
+/// for owned images; the pointer arithmetic does not apply a `img_index` offset).
 ///
 /// # Precondition
 ///
@@ -107,7 +107,7 @@ macro_rules! impl_normalize_for {
                 // img_index offset handles sub-image regions. MulC is
                 // elementwise, so aliasing src == dst is safe.
                 let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
-                let dst_ptr = (*dst_base + dst.layout.img_index as u64) as *mut f32;
+                let dst_ptr = *dst_base as *mut f32;
 
                 let dst_step = (dst.layout.height_stride * std::mem::size_of::<f32>()) as i32;
 

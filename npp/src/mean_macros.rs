@@ -39,8 +39,9 @@ macro_rules! impl_mean_for {
             /// NPP's `nStep` is in **bytes**. `layout.height_stride` stores the per-row
             /// element count; we multiply by `size_of::<T>()` to produce the byte step.
             ///
-            /// The raw pointer for src is offset by `layout.img_index` so this impl
-            /// works correctly on sub-images.
+            /// NOTE: sub-image support (offset-in-slice) is **deferred to F6.2**.
+            /// This impl operates on the full owned buffer only (`img_index` is always 0
+            /// for owned images; the pointer arithmetic does not apply a `img_index` offset).
             ///
             /// # Errors
             ///
@@ -93,7 +94,7 @@ macro_rules! impl_mean_for {
 
                 // ── Raw pointers via DevicePtr/DevicePtrMut ──
                 let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
-                let src_ptr = (src_base + self.layout.img_index as u64) as *const $rust_ty;
+                let src_ptr = *src_base as *const $rust_ty;
                 let scratch_ptr = {
                     let base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut scratch_buf);
                     *base

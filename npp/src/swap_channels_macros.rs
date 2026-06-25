@@ -40,9 +40,9 @@ macro_rules! impl_swap_channels_for {
             /// NPP's `nStep` is in **bytes**. `layout.height_stride` stores the per-row
             /// element count; we multiply by `size_of::<T>()` to produce the byte step.
             ///
-            /// The raw pointer for both src and dst is offset by `layout.img_index` so
-            /// this impl works correctly on sub-images created via `CudaImage::sub_image`
-            /// (whose `layout.img_index` carries the parent's offset).
+            /// NOTE: sub-image support (offset-in-slice) is **deferred to F6.2**.
+            /// This impl operates on the full owned buffer only (`img_index` is always 0
+            /// for owned images; the pointer arithmetic does not apply a `img_index` offset).
             ///
             /// # Precondition
             ///
@@ -73,11 +73,11 @@ macro_rules! impl_swap_channels_for {
                 let dst_step_bytes =
                     (dst.layout.height_stride * std::mem::size_of::<$rust_ty>()) as i32;
 
-                // ── Raw pointers via DevicePtr/DevicePtrMut (handles sub-images) ──
+                // ── Raw pointers via DevicePtr/DevicePtrMut ──
                 let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
-                let src_ptr = (src_base + self.layout.img_index as u64) as *const $rust_ty;
+                let src_ptr = *src_base as *const $rust_ty;
                 let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
-                let dst_ptr = (*dst_base + dst.layout.img_index as u64) as *mut $rust_ty;
+                let dst_ptr = *dst_base as *mut $rust_ty;
 
                 // BGRA→RGB channel order: swap R and B (indices 2, 1, 0).
                 let order: [std::os::raw::c_int; 3] = [2, 1, 0];
