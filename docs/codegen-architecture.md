@@ -138,15 +138,24 @@ Convert, with three differences:
    `classify_convert`. The selector is applied at both call sites in
    `gen_impls.rs` (the main generator and `validate_symbols_against_bindings`).
 
-3. **The macro injects the round-mode argument.** The `impl_convert_rounded_for!`
-   macro emits a method with signature
-   `fn convert_rounded(&self, dst: &mut CudaImage<Dst>, mode: RoundMode) -> ...`
-   and inserts `$crate::convert_round_ops::round_mode(mode)` between the
-   `NppiSize` parameter and the stream-context parameter in the NPP FFI call.
-   The generator emits identical invocation syntax to `impl_convert_for!`.
+ 3. **The macro injects the round-mode argument.** The `impl_convert_rounded_for!`
+    macro emits a method with signature
+    `fn convert_rounded(&self, dst: &mut CudaImage<Dst>, mode: RoundMode) -> ...`
+    and inserts `$crate::convert_round_ops::round_mode(mode)` between the
+    `NppiSize` parameter and the stream-context parameter in the NPP FFI call.
+    The generator emits identical invocation syntax to `impl_convert_for!`.
 
-Scaled rounding-mode variants (shape `..., MISC:NppRoundMode, CONST_SCALAR`) are
-deferred to **F5.4**.
+ 4. **The `dual_type_round_scaled` selector.** A parallel `bool` field on
+    `FamilyDescriptor` for the scaled rounding-mode family (`C1RSfs`). When
+    `true`, `generate_for_family()` dispatches to `classify_convert_round_scaled`
+    instead, which matches `C1RSfs`/`C1RSfs_Ctx` variants (single-channel only).
+    The associated macro `impl_convert_rounded_scaled_for!` injects both a
+    `$round_mode` and `$scale_factor` parameter into the FFI call, with the
+    `nScaleFactor` argument placed between `eRoundMode` and the stream context.
+
+    The `CONVERT_ROUND_SCALED_FAMILY` descriptor follows the same generation
+    pipeline as `CONVERT_ROUND_FAMILY` with the added `scale_factor` parameter.
+    All 17 C1RSfs `(src,dst)` pairs from the CUDA 12.9 NPP bindings are covered.
 
 ## Normalize: convert-then-scale
 

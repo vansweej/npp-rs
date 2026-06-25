@@ -320,20 +320,33 @@ capability trait**, not a modification to `ConvertTo`.
 
 ---
 
-## F5.4 — Scaled rounding-mode Convert (deferred)
+## F5.4 — Scaled rounding-mode `nppiConvert` variants *(complete)*
 
-**What:** Add the scaled rounding-mode `nppiConvert_*` variants — the 17
-functions with shape `SRC+STEP, DST+STEP, SIZE, MISC:NppRoundMode,
-CONST_SCALAR`. Requires extending `shape.rs`'s `classify_param` to detect the
-scale-factor parameter by name (see `shape.rs:212-216` for the existing
-`Divisor`/`Value`/`Constant`/`ScaleFactor` heuristics — if the scale arg is
-named differently, `derive_shape` misclassifies it as `MISC:i32`, and the
-shape-check rejects a valid symbol).
+**What:** Bind the `nppiConvert_*C1RSfs` family — single-channel pixel-type
+conversion with a rounding mode and a scale factor. Ships a
+`ConvertRoundedScaled<Dst>` trait following the F5.3 codegen pattern.
 
-**Why deferred:** The scaled group's `CONST_SCALAR` role in `shape.rs:212-216`
-is detected by parameter-name heuristics; F5.4 must extend `classify_param`
-first. The round-mode group (F5.3) was shipped independently to keep each
-delivery self-contained.
+**Scope note:** Only single-channel (`C1RSfs`) — NPP does not expose
+`C3RSfs`/`C4RSfs`.
+
+**D-API note:** The `nScaleFactor` parameter is documented as `"Integer Result
+Scaling"` in the NPP docs. Per NPP `Sfs` convention, this is presumed to be a
+power-of-two exponent (`2^nScaleFactor`).
+
+**Committed artifacts added by F5.4:**
+- `npp-codegen/src/classify.rs` — `classify_convert_round_scaled` + unit tests
+- `npp-codegen/src/gen_impls.rs` — `CONVERT_ROUND_SCALED_FAMILY` descriptor,
+  `dual_type_round_scaled` dispatch, generator tests (byte-identity + corpus)
+- `npp-codegen/examples/gen_convert_round_scaled_impls.rs` — generator example
+- `npp-codegen/tests/fixtures/nppiConvertRoundScaled_symbols.txt` — fixture
+- `npp/src/convert_round_scaled_macros.rs` — `impl_convert_rounded_scaled_for!`
+- `npp/src/convert_round_scaled_generated.rs` — 17 generated invocations
+- `npp/src/imageops.rs` — `ConvertRoundedScaled<Dst>` trait
+- `npp/tests/golden_convert_round_scaled.rs` — shape-check test
+- `npp/tests/golden_convert_round_scaled_pinned.rs` — per-mode golden test (3 modes)
+- `npp/tests/golden_convert_round_scaled_chained.rs` — chained `_Ctx` golden test
+- Phase 0 bug fixes: unified `find_bindings` resolver, `example_name` field on
+  `FamilyDescriptor`
 
 **Dependencies:** F5.3 (`CONVERT_ROUND_FAMILY` infrastructure, `RoundMode` enum).
 
