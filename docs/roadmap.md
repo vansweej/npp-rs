@@ -395,12 +395,43 @@ path). cudarc 0.9.15 `dtoh_sync_copy_into` confirmed to accept `&CudaView` via
 
 ---
 
-## F6.1 — Benchmark port
+## F6.1 — Device-timed benchmark suite *(complete)*
 
-The five `npp/benches/*.rs` files from the original crate use `rustacuda`,
-`image-rs`, and `cuda-runtime-sys` — none of which exist in the M1 dependency
-set. They are parked (not built) and must be reimplemented as full benchmarks
-asserting both timing and output content. Depends on M1's new API.
+**What:** Device-timed benchmark suite (4 bench files, Criterion 0.8,
+`iter_custom`, CUDA-event timing) covering Resize, SwapChannels, Mean,
+Convert, and Normalize. Timing is measured via a new RAII `Event` primitive on
+`StreamContext` (`record_event()` / `elapsed()`) — this is also the first brick
+of F8.2's D3 design, baked in intentionally to serve as the C-2 overlap spike
+tool. Benches are timing-only (correctness delegated to the `golden_*` test
+suite). GPU feature-gated; CI has no GPU lane.
+
+**Why:** The original roadmap requirement to "assert both timing and output
+content" is reinterpreted: correctness lives in the dedicated `golden_*` test
+suite; benches are pure timing. This avoids duplicate golden constants, gives a
+single source of correctness truth, and removes the per-bench `EXPECTED`
+pinning burden.
+
+**Committed artifacts:**
+- `npp/benches/bench_resize_size.rs` — size sweep (64→2048), Linear, 3ch.
+- `npp/benches/bench_resize_modes.rs` — interpolation sweep + channel count.
+- `npp/benches/bench_op_family.rs` — cross-op comparison.
+- `Event` RAII wrapper in `npp/src/stream.rs` with `record()` / `elapsed()`.
+- Criterion 0.8 bump with `default-features = false`, `features = ["plotters", "cargo_bench_support"]`.
+
+**Verification (no GPU required):**
+```
+nix develop . --command cargo build
+nix develop . --command cargo test
+nix develop . --command cargo fmt --check
+nix develop . --command cargo clippy -- -D warnings
+nix develop . --command cargo bench -p npp-rs
+nix develop . --command cargo tarpaulin
+```
+
+**Manual GPU-only:**
+```
+nix develop . --command cargo bench --features gpu -p npp-rs
+```
 
 ---
 

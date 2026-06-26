@@ -38,10 +38,14 @@
 //! The originating `cuDeviceGetAttribute` driver call is **unsafe**, but
 //! `CudaDevice::attribute` wraps it safely by guaranteeing device validity.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Duration;
 
-use cudarc::driver::{CudaDevice, CudaStream, DriverError};
+use cudarc::driver::{result, sys, CudaDevice, CudaStream, DriverError};
 use npp_sys::NppStreamContext;
+
+use crate::error::NppError;
 
 /// A CUDA device handle with an associated stream and a populated
 /// [`NppStreamContext`] for use with NPP `_Ctx` functions.
@@ -165,6 +169,97 @@ impl StreamContext {
     pub fn device_fence(&self) -> Result<(), DriverError> {
         self.device.wait_for(&self.stream)
     }
+
+    /// Create a new RAII timing event associated with this stream context.
+    ///
+    /// Use [`Event::record`] to record the event on the stream, then call
+    /// [`elapsed`](Self::elapsed) to measure device-time between two events.
+    #[cfg(not(tarpaulin_include))]
+    pub fn record_event(&self) -> Event {
+        let event = result::event::create(sys::CUevent_flags::CU_EVENT_DEFAULT)
+            .expect("cuEventCreate failed");
+        Event {
+            inner: event,
+            stream: self.stream.stream,
+            _device: Arc::clone(&self.device),
+            _nosync: PhantomData,
+        }
+    }
+
+    /// Measure device-time elapsed between two recorded events on this stream.
+    ///
+    /// Returns `Ok(Duration)` on success, or `Err(NppError)` if the driver
+    /// call fails. Both events must have been recorded (via [`Event::record`])
+    /// on the stream associated with this context, and the earlier event must
+    /// have completed before this call.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NppError::Cuda` if `cuEventElapsedTime` fails.
+    #[cfg(not(tarpaulin_include))]
+    pub fn elapsed(&self, start: &Event, end: &Event) -> Result<Duration, NppError> {
+        // SAFETY: start.inner and end.inner are valid CUevents created by
+        // record_event. Both were recorded on this stream (or a compatible one).
+        let ms = unsafe { result::event::elapsed(start.inner, end.inner)? };
+        Ok(Duration::from_secs_f64(ms as f64 / 1_000.0))
+    }
+}
+
+/// A RAII wrapper around a CUDA event, used for device-side timing.
+///
+/// # Safety
+///
+/// The underlying CUDA event is created with `cuEventCreate` and destroyed
+/// with `cuEventDestroy` on drop. The event is associated with the same
+/// CUDA context as the `StreamContext` that created it. The caller must
+/// ensure the CUDA device handle (`CudaDevice`) outlives this event
+/// (same invariant as [`CudaImage`](crate::image::CudaImage) and
+/// [`StreamContext`]).
+///
+/// # Panics
+///
+/// `record` and `elapsed` may panic if the underlying CUDA driver call
+/// fails (these indicate a driver-level issue that is not recoverable).
+#[derive(Debug)]
+#[cfg(not(tarpaulin_include))]
+pub struct Event {
+    inner: sys::CUevent,
+    stream: sys::CUstream,
+    // Keeps the CUDA device (and thus the CUDA context) alive.
+    _device: Arc<CudaDevice>,
+    // Makes Event !Send + !Sync to match StreamContext's CUDA-context
+    // thread affinity. CUDA events are tied to the CUcontext that created them.
+    // This matches StreamContext's own !Send + !Sync (enforced via Arc).
+    _nosync: PhantomData<*const ()>,
+}
+
+#[cfg(not(tarpaulin_include))]
+impl Event {
+    /// Record the event on the stream managed by this `StreamContext`.
+    ///
+    /// After this call, the event is recorded — use [`elapsed`](Self::elapsed)
+    /// to measure device time between two recorded events.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the underlying `cuEventRecord` call fails.
+    pub fn record(&self) {
+        // SAFETY: self.inner is a valid CUevent created in
+        // StreamContext::record_event, and self.stream is a valid
+        // CUstream from the same device context.
+        let result = unsafe { result::event::record(self.inner, self.stream) };
+        assert!(result.is_ok(), "cuEventRecord failed: {:?}", result);
+    }
+}
+
+#[cfg(not(tarpaulin_include))]
+impl Drop for Event {
+    fn drop(&mut self) {
+        // SAFETY: self.inner is a valid CUevent created by
+        // cuEventCreate in StreamContext::record_event, and is
+        // only destroyed once here.
+        let _ = unsafe { result::event::destroy(self.inner) };
+    }
 }
 
 /// Populate an [`NppStreamContext`] from device attributes and a stream.
@@ -267,5 +362,24 @@ mod tests {
         // The following line would fail to compile if it were a reference.
         fn _is_value_type(_: NppStreamContext) {}
         let _ = _is_value_type; // suppress unused warning
+    }
+
+    #[test]
+    fn test_ms_to_duration_conversion() {
+        // 0 ms → 0 secs
+        let d = Duration::from_secs_f64(0.0 / 1_000.0);
+        assert_eq!(d.as_nanos(), 0);
+
+        // 1 ms → 1_000_000 ns
+        let d = Duration::from_secs_f64(1.0 / 1_000.0);
+        assert_eq!(d.as_nanos(), 1_000_000);
+
+        // 1000 ms → 1 sec
+        let d = Duration::from_secs_f64(1000.0 / 1_000.0);
+        assert_eq!(d.as_secs(), 1);
+
+        // 1.5 ms → 1_500_000 ns
+        let d = Duration::from_secs_f64(1.5 / 1_000.0);
+        assert_eq!(d.as_nanos(), 1_500_000);
     }
 }

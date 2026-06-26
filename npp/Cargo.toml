@@ -18,7 +18,7 @@ thiserror = "2"
 # half = "2"  # TODO(M2): uncomment for half::f16 NppPixelType support
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["plotters"] }
+criterion = { version = "0.8", default-features = false, features = ["plotters", "cargo_bench_support"] }
 pretty_assertions = "1.0.0"
 
 [lints.rust]
@@ -26,6 +26,21 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
 
 [[bench]]
 name = "bench_resize_correctness"
+harness = false
+required-features = ["gpu"]
+
+[[bench]]
+name = "bench_resize_size"
+harness = false
+required-features = ["gpu"]
+
+[[bench]]
+name = "bench_resize_modes"
+harness = false
+required-features = ["gpu"]
+
+[[bench]]
+name = "bench_op_family"
 harness = false
 required-features = ["gpu"]
 
