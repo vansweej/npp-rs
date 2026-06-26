@@ -160,6 +160,32 @@ impl StreamContext {
         self.stream.synchronize()
     }
 
+    /// Create a new non-blocking stream on the same CUDA device.
+    ///
+    /// The returned `Arc<CudaStream>` is owned entirely by the caller — the
+    /// `StreamContext` retains no reference to it. This is intentional:
+    /// stream pooling, assignment policy, and lifetime management are the
+    /// caller's responsibility.
+    ///
+    /// The new stream does **not** implicitly synchronise with any other
+    /// stream. Use [`record_fence`] / [`wait_for`] to enforce ordering
+    /// between streams.
+    ///
+    /// # Safety
+    ///
+    /// The returned stream must not outlive the device handle (the
+    /// `Arc<CudaContext>` stored in this `StreamContext`). This is the same
+    /// C7 invariant that governs all CUDA objects in this crate — the caller
+    /// is responsible for ensuring the `StreamContext` (or some other
+    /// reference to the same device) outlives the stream.
+    ///
+    /// [`record_fence`]: Self::record_fence
+    /// [`wait_for`]: Self::wait_for
+    #[cfg(not(tarpaulin_include))]
+    pub fn new_stream(&self) -> Result<Arc<CudaStream>, DriverError> {
+        self.device.new_stream()
+    }
+
     /// Create a new RAII timing event associated with this stream context.
     ///
     /// Use [`Event::record`] to record the event on the stream, then call
@@ -192,6 +218,94 @@ impl StreamContext {
     pub fn elapsed(&self, start: &Event, end: &Event) -> Result<Duration, NppError> {
         // CudaEvent::elapsed_ms is safe in cudarc 0.19.x, returns f32 milliseconds.
         let ms = start.inner.elapsed_ms(&end.inner)?;
+        Ok(Duration::from_secs_f64(ms as f64 / 1_000.0))
+    }
+
+    /// Record a fence on this stream.
+    ///
+    /// Creates a new [`Fence`] and records it on the stream managed by this
+    /// context. All work enqueued before this call will complete before the
+    /// fence is signalled. The returned `Fence` can be used with [`wait_for`]
+    /// on another stream to order work, or with [`elapsed_between`] to measure
+    /// device-time between two fences.
+    ///
+    /// This does **not** block the host. It enqueues a CUDA event record
+    /// operation on the stream, which completes asynchronously.
+    ///
+    /// [`wait_for`]: Self::wait_for
+    /// [`elapsed_between`]: Self::elapsed_between
+    #[cfg(not(tarpaulin_include))]
+    pub fn record_fence(&self) -> Result<Fence, NppError> {
+        use cudarc::driver::sys::CUevent_flags;
+        let event = self
+            .device
+            .new_event(Some(CUevent_flags::CU_EVENT_DEFAULT))
+            .map_err(NppError::Cuda)?;
+        event.record(&self.stream).map_err(NppError::Cuda)?;
+        Ok(Fence {
+            inner: event,
+            _device: Arc::clone(&self.device),
+            _nosync: PhantomData,
+        })
+    }
+
+    /// Make this stream wait until a fence recorded on another stream
+    /// is signalled.
+    ///
+    /// All work enqueued **after** this call on this stream will not begin
+    /// until the fence's prior work (on the recording stream) has completed.
+    /// This establishes a device-side ordering between streams without
+    /// host involvement.
+    ///
+    /// The `fence` must have been recorded (via [`record_fence`]) on some
+    /// stream — not necessarily the same stream context — before this call.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the underlying `cuStreamWaitEvent` call fails (this
+    /// indicates a driver-level issue that is not recoverable).
+    ///
+    /// [`record_fence`]: Self::record_fence
+    #[cfg(not(tarpaulin_include))]
+    pub fn wait_for(&self, fence: &Fence) {
+        // cuStreamWaitEvent is available via the raw FFI bindings in sys.
+        // cudarc's CudaEvent does not expose a safe stream_wait wrapper,
+        // so we call the driver API directly.
+        unsafe {
+            let status = sys::cuStreamWaitEvent(
+                self.stream.cu_stream(),
+                fence.inner.cu_event(),
+                sys::CUevent_flags::CU_EVENT_DEFAULT as u32,
+            );
+            assert_eq!(
+                status,
+                sys::CUresult::CUDA_SUCCESS,
+                "cuStreamWaitEvent failed with status {:?}",
+                status,
+            );
+        }
+    }
+
+    /// Measure device-time elapsed between two recorded fences.
+    ///
+    /// Both fences must have been recorded (via [`record_fence`]) and the
+    /// earlier fence's stream must have completed the recorded work before
+    /// this call. The fences may have been recorded on **different** streams
+    /// — this is the cross-stream timing capability that the existing
+    /// [`elapsed`](Self::elapsed) method (which requires same-stream events)
+    /// cannot provide.
+    ///
+    /// Returns `Ok(Duration)` on success, or `Err(NppError)` if the driver
+    /// call fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NppError::Cuda` if `cuEventElapsedTime` fails.
+    ///
+    /// [`record_fence`]: Self::record_fence
+    #[cfg(not(tarpaulin_include))]
+    pub fn elapsed_between(&self, start: &Fence, end: &Fence) -> Result<Duration, NppError> {
+        let ms = start.inner.elapsed_ms(&end.inner).map_err(NppError::Cuda)?;
         Ok(Duration::from_secs_f64(ms as f64 / 1_000.0))
     }
 }
@@ -239,6 +353,41 @@ impl Event {
         let result = self.inner.record(&self.stream);
         assert!(result.is_ok(), "cuEventRecord failed: {:?}", result);
     }
+}
+
+/// A CUDA event used for cross-stream ordering and device-side timing.
+///
+/// A `Fence` is recorded on one stream and waited on by another stream,
+/// establishing a happens-after relationship between the work before the
+/// fence on the recording stream and the work after the wait on the
+/// waiting stream.
+///
+/// This is the single type for both ordering (`wait_for`) and timing
+/// (`elapsed_between`). The underlying CUDA event is one concept; whether
+/// it is used for ordering, timing, or both is a usage distinction, not
+/// a structural one.
+///
+/// # Safety
+///
+/// The underlying CUDA event is created with `cuEventCreate` and destroyed
+/// with `cuEventDestroy` on drop. The event is tied to the same CUDA context
+/// as the `StreamContext` that created it. The caller must ensure the CUDA
+/// device handle (`Arc<CudaContext>`) outlives this fence (same C7 invariant
+/// as [`CudaImage`](crate::image::CudaImage) and [`StreamContext`]).
+///
+/// # !Send + !Sync
+///
+/// Like [`StreamContext`] and [`Event`], `Fence` is `!Send + !Sync` because
+/// CUDA events are tied to the CUcontext that created them (C7).
+#[derive(Debug)]
+#[cfg(not(tarpaulin_include))]
+pub struct Fence {
+    inner: CudaEvent,
+    // Keeps the CUDA device (and thus the CUDA context) alive.
+    _device: Arc<CudaContext>,
+    // Makes Fence !Send + !Sync to match StreamContext's CUDA-context
+    // thread affinity.
+    _nosync: PhantomData<*const ()>,
 }
 
 /// Populate an [`NppStreamContext`] from device attributes and a stream.
