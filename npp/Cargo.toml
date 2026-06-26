@@ -27,6 +27,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
 [[bench]]
 name = "bench_resize_correctness"
 harness = false
+required-features = ["gpu"]
 
 [features]
 default = []

@@ -404,22 +404,83 @@ asserting both timing and output content. Depends on M1's new API.
 
 ---
 
-## F7 — Release-mode validation hardening (C2)
+## F7 — Release-mode validation hardening (C2) *(scope resolved — closed by M1+F1/F2; pitch sub-goal descoped)*
 
-**What:** Replace `debug_assert!` format/stride preconditions at the FFI
-boundary with `Result`-returning validation (or `assert!`), so safety checks
-survive `--release`.
+**What (original):** Replace `debug_assert!` format/stride preconditions at the
+FFI boundary with `Result`-returning validation, and resolve the CT5
+stride-alignment concern by carrying a real pitch in `CudaLayout` and rejecting
+mis-aligned widths at construction.
 
-**Why:** C2 was the report's one genuinely-reachable release-mode memory
-hazard. M1's type seal (C11) **already removes the worst path** — you can no
-longer construct a wrong-channel `CudaImage` via an open `ColorType`, because
-the type *is* the format. What remains: residual stride/dimension invariants
-not expressible purely in the type (e.g. src/dst dimension agreement for
-`bgra_to_rgb`, ROI extent), and stride-alignment enforcement at construction
-(the CT5 fix — carry a real pitch and reject mis-aligned widths). Lower urgency
-post-M1 than pre-M1, but not gone.
+**Status:** The original C2 hazard is **already closed**, and the CT5 sub-goal is
+**descoped** as correctness-equivalent. F7 reduces to documentation
+reconciliation plus two small diagnosability/hygiene fixes. Findings below.
 
-**Dependencies:** M1 (the type seal does half the job; this finishes it).
+### The `debug_assert!` hazard no longer exists
+
+The `debug_assert!` guards C2 cited (`resize_ops.rs:38-39`,
+`swap_channel_ops.rs:9-13`) were **deleted, not promoted**, when F1/F2 rewrote
+those ops into the `impl_*_for!` macros. `resize_ops.rs` now holds only
+`interpolation_mode`/`mode_supported`; `convert_ops.rs` is a 4-line placeholder.
+The current op surface validates dimension/channel agreement with
+`if … return Err(NppError::InvalidArgument)` in `convert_macros.rs`,
+`convert_round_macros.rs`, `convert_round_scaled_macros.rs`,
+`swap_channels_macros.rs`, and via the `_ =>` channel-guard arm in all seven
+families. These are `Result`-returning and **survive `--release`**. The C11 type
+seal (M1) removed the wrong-format construction path. Both prongs of the
+report's C2 remedy ("replace `debug_assert!` **and** seal the type") are
+satisfied.
+
+### CT5 / U4 resolution — alignment is performance, not correctness
+
+NPP's "Image Data Alignment Requirements" (CUDA NPP docs, *Image Processing
+Conventions*) resolve the report's unresolved **U4**:
+
+- **1- and 3-channel** images require only `nStep % sizeof(T) == 0`.
+- **2- and 4-channel** images require `nStep % (channels · sizeof(T)) == 0`;
+  violation returns `NPP_NOT_EVEN_STEP_ERROR` (a **rejection**, not corruption).
+- "All functions in NPP will work with **arbitrarily aligned images**" — only
+  performance degrades.
+
+The packed layout (`layout.rs`) **auto-satisfies every case**: the byte step is
+`height_stride · sizeof(T) = channels · width · sizeof(T)`, divisible by
+`channels · sizeof(T)` for **any** width and **any** element type (including the
+1-byte `8s`/`i8` path, which only ever appears as C1 in `ConvertRoundedScaled`).
+No public construction path (`new`, `from_host`) can produce a mis-aligned step,
+so `NPP_STEP_ERROR` / `NPP_NOT_EVEN_STEP_ERROR` are **unreachable from safe
+code**. The report's CT5 worry ("width×3 not divisible by 4") was wrong about
+the C3 rule (it is `sizeof(T)`, not 4). The pinned golden in
+`npp/tests/ct5_non_aligned_width.rs` was **captured from the `Ok` arm** (NPP
+accepted a 9-byte/row C3 stride) on CUDA 12.9; the `NPP_STEP_ERROR` arm there is
+version-defensive dead code.
+
+### Pitch sub-goal descoped
+
+Carrying a real pitch in `CudaLayout` would touch ~15 sites across 9 files
+(`layout.rs`, `image.rs`, all seven `*_macros.rs` step calcs, every
+`golden_*.rs` readback) to solve a problem the evidence shows is unreachable and
+performance-only. The F6 planning session already rejected a `pitch` field
+(`docs/f6-plan.md`). **Descoped** unless a future stricter primitive (e.g. an F9
+signal op or a neighbourhood filter) introduces a real alignment requirement.
+
+### Remaining work (small, additive — delivered by this feature)
+
+1. **`CudaImage::new` zero-dimension guard.** Unlike `from_host` (which validates
+   data length), `new` validated nothing before `alloc_zeros`. A shared
+   `validate_dims(channels, width, height)` helper (rejecting any zero dimension
+   → `InvalidArgument`) is now called from both `new` and `from_host`,
+   converting a later cryptic `NPP_SIZE_ERROR` into an eager, clear error.
+   Pure-logic, host-unit-tested (counts toward coverage, mirroring
+   `resize_ops::mode_supported`).
+
+2. **Bench build fix.** `cargo build --benches` failed in the default (non-GPU)
+   profile: `bench_resize_correctness.rs` is `#![cfg(feature = "gpu")]` and
+   `harness = false`, so without the `gpu` feature its `criterion_main!` was
+   cfg'd out and no `main` existed (`E0601`). A
+   `#[cfg(not(feature = "gpu"))] fn main() {}` fallback now lets the default
+   profile build without a GPU (per AGENTS.md). Pre-existing since F6; the five
+   parked benches are unaffected (`autobenches = false` un-registers them).
+
+**Dependencies:** M1 (type seal), F1/F2 (replaced the `debug_assert!` sites).
 
 ---
 
@@ -533,7 +594,7 @@ patterns being mature enough to reuse the approach.
 M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (convert ops) ──> F5.1 (ConvertTo codegen) ──> F5.2 (Normalize codegen) ──> F5.3 (ConvertRounded, DONE)
      │      │                                                   └────────────────> F5.4 (scaled rounding, deferred)
      │      │                              └────────────────> F6 (correctness hardening) ──> F6.2 (ROI sub-image support, DONE)
-     ├─> F7 (release validation)          [type seal did half in M1]
+     ├─> F7 (validation + hygiene)       [C2 closed by M1+F1/F2; pitch descoped]
      ├─> F8 (streams/execution context)   [DONE]
      │      ├─> F8.1 (configurable device selection)
      │      └─> F8.2 (async multi-stream chaining)
@@ -547,7 +608,8 @@ F10 (IPP) is a separate project. The cross-cutting F8↔F1 signature-shaping ris
 (the load-bearing constraint that shaped the original roadmap) is **resolved**:
 F8 shipped after F1/F2 with a clean `_Ctx` regeneration, so the feared "regenerate
 when streams land" event already occurred and is closed. All remaining features
-(F5.4, F6.1, F7, F8.2, F9) are independent — the next phase is a free choice.
+(F6.1, F8.2, F9) are independent — the next phase is a free choice. (F5.4 and F7
+are complete.)
 
 ---
 

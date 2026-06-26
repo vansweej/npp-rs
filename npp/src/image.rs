@@ -105,6 +105,26 @@ pub struct CudaImage<T: NppPixelType> {
     pub(crate) layout: CudaLayout,
 }
 
+/// Validate image dimensions before allocation.
+///
+/// Returns `NppError::InvalidArgument` if any of `channels`, `width`, or
+/// `height` is zero. A zero-dimension image allocates a degenerate buffer that
+/// NPP later rejects with a cryptic `NPP_SIZE_ERROR`; validating here surfaces
+/// the mistake eagerly at the construction site instead.
+///
+/// Pure-logic (no GPU), so it is unit-tested on the host and counts toward
+/// coverage — unlike the `#[cfg(not(tarpaulin_include))]` constructors that
+/// call it.
+fn validate_dims(channels: u8, width: u32, height: u32) -> Result<(), NppError> {
+    if width == 0 || height == 0 || channels == 0 {
+        return Err(NppError::InvalidArgument(format!(
+            "image dimensions must be non-zero, got {}x{}x{}",
+            width, height, channels
+        )));
+    }
+    Ok(())
+}
+
 impl<T: NppPixelType> CudaImage<T> {
     /// Allocate a new GPU image with the given dimensions and channel count.
     ///
@@ -117,6 +137,8 @@ impl<T: NppPixelType> CudaImage<T> {
     ///
     /// # Errors
     ///
+    /// Returns `NppError::InvalidArgument` if any dimension (width, height, or
+    /// channels) is zero.
     /// Returns `NppError::Cuda` if device allocation fails.
     #[cfg(not(tarpaulin_include))]
     pub fn new(
@@ -125,6 +147,7 @@ impl<T: NppPixelType> CudaImage<T> {
         width: u32,
         height: u32,
     ) -> Result<Self, NppError> {
+        validate_dims(channels, width, height)?;
         let num_elements = (width as usize) * (height as usize) * (channels as usize);
         let buf = ctx.device().alloc_zeros::<T>(num_elements)?;
         let layout = CudaLayout::row_major_packed(channels, width, height);
@@ -159,6 +182,7 @@ impl<T: NppPixelType> CudaImage<T> {
         height: u32,
         data: &[T],
     ) -> Result<Self, NppError> {
+        validate_dims(channels, width, height)?;
         let expected_len = (width as usize) * (height as usize) * (channels as usize);
         if data.len() != expected_len {
             return Err(NppError::InvalidArgument(format!(
@@ -495,5 +519,39 @@ impl<'a, T: NppPixelType> TryFrom<&CudaImageView<'a, T>> for Vec<T> {
         let mut host: Vec<T> = vec![unsafe { std::mem::zeroed::<T>() }; len];
         v.ctx.device().dtoh_sync_copy_into(&v.view, &mut host)?;
         Ok(host)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_dims_rejects_zero_channels() {
+        assert!(matches!(
+            validate_dims(0, 4, 4),
+            Err(NppError::InvalidArgument(_))
+        ));
+    }
+
+    #[test]
+    fn validate_dims_rejects_zero_width() {
+        assert!(matches!(
+            validate_dims(3, 0, 4),
+            Err(NppError::InvalidArgument(_))
+        ));
+    }
+
+    #[test]
+    fn validate_dims_rejects_zero_height() {
+        assert!(matches!(
+            validate_dims(3, 4, 0),
+            Err(NppError::InvalidArgument(_))
+        ));
+    }
+
+    #[test]
+    fn validate_dims_accepts_nonzero() {
+        assert!(validate_dims(3, 640, 480).is_ok());
     }
 }
