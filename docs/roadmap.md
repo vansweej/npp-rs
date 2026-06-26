@@ -463,6 +463,21 @@ stream abstraction (the `StreamContext` pivot) already satisfied that requiremen
 
 **Dependencies:** F8 (core).
 
+**Verification:** After this change, run the following inside the Nix dev shell:
+
+```
+nix develop . --command cargo fmt --check
+nix develop . --command cargo clippy -- -D warnings
+nix develop . --command cargo clippy --features gpu -- -D warnings
+nix develop . --command cargo test
+```
+
+The `--features gpu` clippy invocation is required because the ROI test modules
+(`resize_roi_tests`, `swap_channels_roi_tests`) are gated behind
+`#[cfg(all(test, feature = "gpu"))]` and are otherwise never compiled, so their
+import hygiene would go unchecked. GPU golden tests remain a manual gate and must
+not be added to CI.
+
 ---
 
 ## F8.2 — Compute/copy overlap / async multi-stream chaining
