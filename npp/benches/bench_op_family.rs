@@ -95,7 +95,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let _ = black_box(src_3ch.resize(&mut dst_resize, ResizeInterpolation::Linear));
                     let end = ctx.record_event();
                     end.record();
-                    ctx.device_fence().expect("fence");
+                    ctx.synchronize().expect("sync");
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
@@ -117,7 +117,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let _ = black_box(src_4ch.bgra_to_rgb(&mut dst_swap));
                     let end = ctx.record_event();
                     end.record();
-                    ctx.device_fence().expect("fence");
+                    ctx.synchronize().expect("sync");
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
@@ -139,7 +139,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let _: Vec<f64> = black_box(src_3ch.mean().expect("mean"));
                     let end = ctx.record_event();
                     end.record();
-                    ctx.device_fence().expect("fence");
+                    ctx.synchronize().expect("sync");
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
@@ -161,7 +161,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let _ = black_box(src_3ch.convert(&mut dst_convert));
                     let end = ctx.record_event();
                     end.record();
-                    ctx.device_fence().expect("fence");
+                    ctx.synchronize().expect("sync");
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
@@ -183,7 +183,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let _ = black_box(src_3ch.normalize(&mut dst_norm));
                     let end = ctx.record_event();
                     end.record();
-                    ctx.device_fence().expect("fence");
+                    ctx.synchronize().expect("sync");
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total

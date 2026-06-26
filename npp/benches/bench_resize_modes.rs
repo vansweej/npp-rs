@@ -78,7 +78,7 @@ fn bench_resize_modes(c: &mut Criterion) {
                     let _ = black_box(src.resize(&mut dst, mode));
                     let end = ctx.record_event();
                     end.record();
-                    ctx.device_fence().expect("fence");
+                    ctx.synchronize().expect("sync");
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
@@ -117,7 +117,7 @@ fn bench_resize_channels(c: &mut Criterion) {
                     let _ = black_box(src.resize(&mut dst, ResizeInterpolation::Linear));
                     let end = ctx.record_event();
                     end.record();
-                    ctx.device_fence().expect("fence");
+                    ctx.synchronize().expect("sync");
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total

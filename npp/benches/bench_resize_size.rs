@@ -87,7 +87,7 @@ fn bench_resize_size(c: &mut Criterion) {
 
                     // Wait for the stream to complete so the elapsed time
                     // captures the full operation.
-                    ctx.device_fence().expect("fence after resize");
+                    ctx.synchronize().expect("sync after resize");
 
                     total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }

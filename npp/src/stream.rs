@@ -160,28 +160,6 @@ impl StreamContext {
         self.stream.synchronize()
     }
 
-    /// Device-side fence: ensure all prior work on this stream is visible
-    /// to subsequent work on other streams on the same device, without
-    /// blocking the host.
-    ///
-    /// This is useful for ordering operations between streams within the
-    /// same device context without a host round-trip. It is **not**
-    /// sufficient to make host-side readback safe — use [`synchronize`]
-    /// for that.
-    ///
-    /// [`synchronize`]: Self::synchronize
-    #[cfg(not(tarpaulin_include))]
-    pub fn device_fence(&self) -> Result<(), DriverError> {
-        // In cudarc 0.19.x, CudaContext no longer has a wait_for method.
-        // We create a brief event to establish ordering between streams.
-        // This is equivalent to the old CudaDevice::wait_for pattern.
-        let event = self
-            .device
-            .new_event(Some(sys::CUevent_flags::CU_EVENT_DEFAULT))?;
-        event.record(&self.stream)?;
-        Ok(())
-    }
-
     /// Create a new RAII timing event associated with this stream context.
     ///
     /// Use [`Event::record`] to record the event on the stream, then call
