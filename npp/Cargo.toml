@@ -18,7 +18,7 @@ thiserror = "2"
 # half = "2"  # TODO(M2): uncomment for half::f16 NppPixelType support
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["plotters"] }
+criterion = { version = "0.8", default-features = false, features = ["plotters", "cargo_bench_support"] }
 pretty_assertions = "1.0.0"
 
 [lints.rust]
