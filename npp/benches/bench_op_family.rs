@@ -31,9 +31,9 @@ use std::time::Duration;
 use criterion::{criterion_group, criterion_main, Criterion};
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{ConvertTo, Mean, Normalize, Resize, ResizeInterpolation, SwapChannels};
-use std::hint::black_box;
 use npp_rs::stream::StreamContext;
 use npp_rs::stream_context_for;
+use std::hint::black_box;
 
 const BENCH_SIZE: u32 = 512;
 
@@ -150,9 +150,7 @@ fn bench_op_family(c: &mut Criterion) {
     // --- ConvertTo (u8→f32, 3ch, same-size) ---
     {
         // Warm-up
-        src_3ch
-            .convert(&mut dst_convert)
-            .expect("convert warm-up");
+        src_3ch.convert(&mut dst_convert).expect("convert warm-up");
 
         group.bench_function("Convert_u8_to_f32", |b| {
             b.iter_custom(|iters| {
@@ -174,9 +172,7 @@ fn bench_op_family(c: &mut Criterion) {
     // --- Normalize (u8→f32, 3ch, same-size) ---
     {
         // Warm-up
-        src_3ch
-            .normalize(&mut dst_norm)
-            .expect("normalize warm-up");
+        src_3ch.normalize(&mut dst_norm).expect("normalize warm-up");
 
         group.bench_function("Normalize_u8_to_f32", |b| {
             b.iter_custom(|iters| {
