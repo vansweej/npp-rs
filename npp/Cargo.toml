@@ -39,6 +39,11 @@ name = "bench_resize_modes"
 harness = false
 required-features = ["gpu"]
 
+[[bench]]
+name = "bench_op_family"
+harness = false
+required-features = ["gpu"]
+
 [features]
 default = []
 # Enable to run GPU-dependent tests (manual gate — no GPU lane in CI).
