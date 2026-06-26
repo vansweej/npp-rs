@@ -62,6 +62,30 @@ SwapChannels (u8), Convert (u8→f32, u16→f32, u8→u16), Normalize (u8→f32,
 and Mean (u8) are all pinned and GPU-verified.)** Tests
 assert only geometry/dimensions.
 
+## Benchmarking
+
+- Benches are **device-timed** via `StreamContext::record_event()` /
+  `elapsed()` (CUDA events), not wall-clock. All new benches must use
+  `iter_custom` (not `b.iter`) and record start/end events around the NPP
+  call only. Allocations are outside the timed loop.
+- All bench files carry `#![cfg(feature = "gpu")]` and are registered in
+  `Cargo.toml` with `[[bench]] name = "..." harness = false` and
+  `required-features = ["gpu"]`. Plain `cargo bench` compiles but produces
+  zero measurements — benches are a **manual GPU lane only**, never CI.
+- Benches measure **timing only**. Output correctness is verified by the
+  dedicated `golden_*` test suite, not duplicated here. A warm-up pass
+  (run once, assert nothing on bytes) is required to prime caches and catch
+  hard errors early.
+- GPU-only code in bench files is annotated `#[cfg(not(tarpaulin_include))]`.
+- Three bench files exist (F6.1):
+  - `bench_resize_size` — size sweep (64→2048), Linear, 3ch.
+  - `bench_resize_modes` — interpolation sweep (4 modes) + channel count (3v4).
+  - `bench_op_family` — cross-op comparison (Resize/SwapChannels/Mean/Convert/Normalize).
+- Device timing: use `StreamContext::record_event()` (RAII `Event`) and
+  `elapsed()` for kernel-time measurement. See `stream.rs` for the
+  implementation and safety contract. Do not scatter raw `cuEvent*` FFI calls
+  across bench files.
+
 ## FFI / linking gotchas (when touching `npp-sys/build.rs`)
 
 - Target Linux only; Windows branches have been removed.
