@@ -6,8 +6,8 @@
 //! - [`Resize`] (Linear, downscale 2×)
 //! - [`SwapChannels`] (BGRA→RGB, same-size)
 //! - [`Mean`] (per-channel mean to `Vec<f64>`) — **includes host readback**
-//! - [`ConvertTo`] (u8→f32)
-//! - [`Normalize`] (u8→f32, min=0, max=255)
+//! - [`Convert`] (u8→f32)
+//! - [`Normalize`] (u8→f32)
 //!
 //! **Correctness is NOT asserted here.** See `bench_resize_size.rs` doc.
 //!
@@ -28,9 +28,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{ConvertTo, Mean, Normalize, Resize, ResizeInterpolation, SwapChannels};
+use std::hint::black_box;
 use npp_rs::stream::StreamContext;
 use npp_rs::stream_context_for;
 
@@ -150,16 +151,16 @@ fn bench_op_family(c: &mut Criterion) {
     {
         // Warm-up
         src_3ch
-            .convert_to(&mut dst_convert)
+            .convert(&mut dst_convert)
             .expect("convert warm-up");
 
-        group.bench_function("ConvertTo_u8_to_f32", |b| {
+        group.bench_function("Convert_u8_to_f32", |b| {
             b.iter_custom(|iters| {
                 let mut total = Duration::ZERO;
                 for _ in 0..iters {
                     let start = ctx.record_event();
                     start.record();
-                    let _ = black_box(src_3ch.convert_to(&mut dst_convert));
+                    let _ = black_box(src_3ch.convert(&mut dst_convert));
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
@@ -170,20 +171,20 @@ fn bench_op_family(c: &mut Criterion) {
         });
     }
 
-    // --- Normalize (u8→f32, 3ch, min=0, max=255, same-size) ---
+    // --- Normalize (u8→f32, 3ch, same-size) ---
     {
         // Warm-up
         src_3ch
-            .normalize(&mut dst_norm, 0.0, 255.0)
+            .normalize(&mut dst_norm)
             .expect("normalize warm-up");
 
-        group.bench_function("Normalize_u8_to_f32_min0_max255", |b| {
+        group.bench_function("Normalize_u8_to_f32", |b| {
             b.iter_custom(|iters| {
                 let mut total = Duration::ZERO;
                 for _ in 0..iters {
                     let start = ctx.record_event();
                     start.record();
-                    let _ = black_box(src_3ch.normalize(&mut dst_norm, 0.0, 255.0));
+                    let _ = black_box(src_3ch.normalize(&mut dst_norm));
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
