@@ -7,14 +7,18 @@ model; correctness is emergent default-stream side-effect").
 
 ## Execution model
 
-`StreamContext` provides three execution stages with two distinct ordering
+`StreamContext` provides four execution stages with two distinct ordering
 guarantees:
 
 1. **Host-to-device copies** are performed on the CUDA default stream
    (e.g. `CudaDevice::htod_sync_copy_into`).
 2. **NPP operations** are enqueued on the `StreamContext`'s forked stream
    via the `_Ctx` API.
-3. **Device-to-host read-backs** (`TryFrom<&CudaImage>`) execute on the
+3. **Device-side fences** ([`Fence`](../npp/src/stream.rs)) can be
+   recorded between operations for cross-stream ordering
+   ([`wait_for`](../npp/src/stream.rs)) or timing
+   ([`elapsed_between`](../npp/src/stream.rs)).
+4. **Device-to-host read-backs** (`TryFrom<&CudaImage>`) execute on the
    **NULL stream** via cudarc's `dtoh_sync_copy`.
 
 ## Ordering guarantees
@@ -60,10 +64,12 @@ copy.
 - [`TryFrom<&CudaImage>`](../npp/src/image.rs) — Performs a host fence
   via `synchronize()` followed by a NULL-stream DtoH copy. This is the
   recommended readback path for single-step or chained pipelines.
-- [`StreamContext::device_fence()`](../npp/src/stream.rs) — Device-side
-  only. Calls `cuEventSynchronize` (via `CudaDevice::wait_for`). Orders
-  work between streams on the same device without blocking the host. Not
-  sufficient for host readback safety.
+- [`Fence`](../npp/src/stream.rs) — A CUDA event used for cross-stream
+  ordering and device-side timing. Create via
+  [`StreamContext::record_fence()`](../npp/src/stream.rs), wait on another
+  stream via [`StreamContext::wait_for()`](../npp/src/stream.rs). Timing
+  between two fences (same or cross-stream) uses
+  [`StreamContext::elapsed_between()`](../npp/src/stream.rs).
 
 ## Why this closes C8
 
@@ -76,7 +82,7 @@ By switching to:
 - **application-populated** `NppStreamContext` (not the deprecated
   `nppGetStreamContext`)
 - a **dedicated forked stream** per `StreamContext`
-- **explicit sync points** (`synchronize()`, `device_fence()`, readback
+- **explicit sync points** (`synchronize()`, `Fence` ordering, readback
 
 every operation's ordering is deterministic and documented, not emergent.
 The fence specifically addresses the cross-stream race between the forked-
@@ -84,17 +90,10 @@ stream NPP work and the NULL-stream DtoH copy.
 
 ## StreamContext is `!Send + !Sync`
 
-`CudaStream` is `!Send + !Sync` (CUDA streams are inherently thread-bound).
-`StreamContext` inherits this property. `Arc<StreamContext>` is intended
-for shared ownership within a single thread (or under external
-synchronisation). Use a separate `StreamContext` per thread if concurrent
-GPU work is needed.
+`CudaStream` became `Send + Sync` in cudarc 0.19.x, but CUDA streams are
+inherently thread-bound (card C7). `StreamContext` re-imposes
+`!Send + !Sync` via `PhantomData<*const ()>` in its struct definition.
+`Arc<StreamContext>` is intended for shared ownership within a single thread
+(or under external synchronisation). Use a separate `StreamContext` per thread
+if concurrent GPU work is needed.
 
-## Relation to Session 2 (F8)
-
-Session 2 of F8 threads `Arc<StreamContext>` onto `CudaImage` (replacing
-the former `Arc<CudaDevice>` field) and pivots the three existing
-operations (Resize, SwapChannels, Mean) to use `_Ctx` variants. The
-`StreamContext` is now integral to every image — all operations go through
-the `_Ctx` NPP API and respect the async contract described above.
-See [`docs/roadmap.md`](roadmap.md) §F8.

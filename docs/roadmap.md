@@ -572,20 +572,36 @@ not be added to CI.
 
 ---
 
-## F8.2 — Compute/copy overlap / async multi-stream chaining
+## F8.2 — Stream-primitives floor (Fence + new_stream) *(complete)*
 
-**What:** Enable compute/copy overlap and multi-stream async chaining. The `StreamContext::device_fence()`
-method already exists (calls `cuDeviceGetAttribute` via `CudaDevice::wait_for`), providing
-device-side ordering without host blocking. This feature would extend the async contract
-to support chaining operations across multiple streams on the same device, with explicit
-device-side fences between them.
+**What:** Deliver a minimal composable stream-primitives floor — `Fence`
+(cross-stream ordering + device-side timing via `record_fence`/`wait_for`
+/`elapsed_between`) and `new_stream` (caller-owned stream handles). The
+broken `device_fence()` no-op stub was removed and benches migrated to
+`synchronize()`. See [`stream.rs`](../npp/src/stream.rs) for the API.
 
-**Why:** F8's original scope included "compute/copy overlap" — the entire performance reason
-to use CUDA asynchronously. The core stream abstraction (host-fenced readback, forked stream
-per context) landed, but async chaining was deferred to "Session 3 (future)" per the F8
-session briefs. This is the remaining work to unlock true async pipelines.
+**Why:** F8's original scope included "compute/copy overlap" — the
+performance reason to use CUDA asynchronously. The core stream abstraction
+(host-fenced readback, forked stream per context) landed in F8 core, but
+true cross-stream primitives were deferred. This floor is the foundation
+that user workflows (fan-out/fan-in, supertextures, MTCNN pipelines)
+compose on top of — it is deliberately not a single workflow feature.
 
-**Dependencies:** F8 (core).
+**What F8.2 is NOT:**
+- Not async multi-stream chaining (Primitive 3 — op-on-caller-supplied-stream
+  — is deferred).
+- Not a pipeline or workflow API (no `fork()`, no pooling, no assignment).
+- Not a replacement for [`Event`](../npp/src/stream.rs) (kept for bench
+  backward compatibility).
+
+**Verification:**
+```bash
+nix develop . --command cargo fmt --check
+nix develop . --command cargo clippy -- -D warnings
+nix develop . --command cargo clippy --features gpu -- -D warnings
+nix develop . --command cargo test
+nix develop . --command cargo test --features gpu fence_
+```
 
 ---
 
@@ -628,11 +644,11 @@ M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (c
      ├─> F7 (validation + hygiene)       [C2 closed by M1+F1/F2; pitch descoped]
      ├─> F8 (streams/execution context)   [DONE]
      │      ├─> F8.1 (configurable device selection)
-     │      └─> F8.2 (async multi-stream chaining)
+      │      └─> F8.2 (stream-primitives floor) [DONE]
      └─> F9 (npps signal ops) ── after F1
 ```
 
-**Sequencing note:** F1, F2, F5.1, F5.2, F5.3, F6, F6.2, F8 (core), and F8.1 are
+**Sequencing note:** F1, F2, F5.1, F5.2, F5.3, F6, F6.2, F8 (core), F8.1, and F8.2 are
 complete and merged on `main`. F3 (image-rs) and F4 (graphynx) are **dropped from
 this repository** — ecosystem integration moves to separate downstream repos.
 F10 (IPP) is a separate project. The cross-cutting F8↔F1 signature-shaping risk
