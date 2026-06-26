@@ -23,11 +23,10 @@
 
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{Resize, ResizeInterpolation};
-use npp_rs::stream::Fence;
 use npp_rs::stream_context_for;
 
 #[test]
-fn cross_stream_timing() {
+fn fence_cross_stream_timing() {
     let ctx = stream_context_for(0).expect("CUDA device 0 init");
 
     let src = CudaImage::<u8>::from_host(ctx.clone(), 3, 512, 512, &vec![128u8; 512 * 512 * 3])
