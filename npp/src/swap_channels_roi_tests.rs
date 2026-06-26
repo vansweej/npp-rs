@@ -22,7 +22,6 @@
 //! `TryFrom<&CudaImageView>` would produce (the view readback spans `h *
 //! parent_height_stride` elements, including inter-row padding).
 
-use crate::cuda::default_cuda_device;
 use crate::image::CudaImage;
 use crate::stream::stream_context_for;
 use crate::test_helpers::assert_golden;
@@ -43,7 +42,6 @@ const EXPECTED: &[u8] = &[
 
 #[test]
 fn test_swap_channels_roi_u8_bgra_to_rgb() {
-    let _dev = default_cuda_device().expect("CUDA device init");
     let ctx = stream_context_for(0).expect("stream context");
 
     // Parent: 4-channel u8 BGRA, 12x8.

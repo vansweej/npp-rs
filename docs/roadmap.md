@@ -449,16 +449,17 @@ were regenerated onto `_Ctx` symbols in a single coordinated pass (commit `257bd
 
 ---
 
-## F8.1 — Configurable device selection
+## F8.1 — Configurable device selection *(complete)*
 
-**What:** Remove the hardcoded ordinal-0 path from `cuda.rs`. The `stream_context_for(ordinal)`
-function already exists and accepts a device ordinal, but `default_cuda_device()` hardcodes
-ordinal 0. Eliminate the hardcoded path so all device selection is explicit.
+**What:** Configurable device selection was already delivered by F8 core — `CudaImage`
+is constructed from an `Arc<StreamContext>`, and `stream_context_for(ordinal)` already
+requires an explicit ordinal. F8.1's actual change is the removal of the unused
+`default_cuda_device()` convenience wrapper function that was never re-exported and
+never referenced in consumer documentation.
 
-**Why:** F8's original scope included "configurable device selection (kill the hardcoded
-`Device::get_device(0)`)". The core stream abstraction landed, but this sub-goal was
-deferred. It is a straightforward cleanup: remove `default_cuda_device()` or make it
-a thin wrapper that requires an explicit ordinal argument.
+**Why:** F8's original scope included removing a hardcoded device-0 path. The core
+stream abstraction (the `StreamContext` pivot) already satisfied that requirement;
+`default_cuda_device()` was an unused vestige. This is dead-code cleanup.
 
 **Dependencies:** F8 (core).
 
@@ -524,14 +525,14 @@ M1 ──┬─> F1 (macro codegen) ──> F2 (alphabet coverage) ──> F5 (c
      └─> F9 (npps signal ops) ── after F1
 ```
 
-**Sequencing note:** F1, F2, F5.1, F5.2, F5.3, F6, F6.2, and F8 (core) are complete and merged on `main`.
-F3 (image-rs) and F4 (graphynx) are **dropped from this repository** — ecosystem
-integration moves to separate downstream repos. F10 (IPP) is a separate project.
-The cross-cutting F8↔F1 signature-shaping risk (the load-bearing constraint that
-shaped the original roadmap) is **resolved**: F8 shipped after F1/F2 with a clean
-`_Ctx` regeneration, so the feared "regenerate when streams land" event already
-occurred and is closed. All remaining features (F5.4, F6.1, F7, F8.1, F8.2, F9)
-are independent — the next phase is a free choice.
+**Sequencing note:** F1, F2, F5.1, F5.2, F5.3, F6, F6.2, F8 (core), and F8.1 are
+complete and merged on `main`. F3 (image-rs) and F4 (graphynx) are **dropped from
+this repository** — ecosystem integration moves to separate downstream repos.
+F10 (IPP) is a separate project. The cross-cutting F8↔F1 signature-shaping risk
+(the load-bearing constraint that shaped the original roadmap) is **resolved**:
+F8 shipped after F1/F2 with a clean `_Ctx` regeneration, so the feared "regenerate
+when streams land" event already occurred and is closed. All remaining features
+(F5.4, F6.1, F7, F8.2, F9) are independent — the next phase is a free choice.
 
 ---
 

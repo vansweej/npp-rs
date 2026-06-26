@@ -6,7 +6,7 @@
 
 #![cfg(feature = "gpu")]
 
-use npp_rs::cuda::default_cuda_device;
+use npp_rs::cuda::initialize_cuda_device;
 use npp_sys::{
     nppiFree, nppiMalloc_32f_C3, nppiMalloc_8u_C3, nppiResize_32f_C3R, nppiResize_8u_C3R,
     NppStatus, NppiInterpolationMode_NPPI_INTER_LANCZOS, NppiRect, NppiSize,
@@ -19,7 +19,7 @@ use std::sync::OnceLock;
 fn ensure_cuda() {
     static DEV: OnceLock<()> = OnceLock::new();
     DEV.get_or_init(|| {
-        default_cuda_device().expect("CUDA device init for spike");
+        initialize_cuda_device(0).expect("CUDA device init for spike");
     });
 }
 

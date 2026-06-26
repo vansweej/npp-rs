@@ -22,7 +22,6 @@
 //! `TryFrom<&CudaImageView>` would produce (the view readback spans `h *
 //! parent_height_stride` elements, including inter-row padding).
 
-use crate::cuda::default_cuda_device;
 use crate::image::CudaImage;
 use crate::imageops::ResizeInterpolation;
 use crate::stream::stream_context_for;
@@ -38,7 +37,6 @@ const EXPECTED: &[u8] = &[
 
 #[test]
 fn test_resize_roi_u8_c3_nn() {
-    let _dev = default_cuda_device().expect("CUDA device init");
     let ctx = stream_context_for(0).expect("stream context");
 
     // Parent: 3-channel u8, 12x8.

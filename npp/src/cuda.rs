@@ -20,12 +20,6 @@ pub fn initialize_cuda_device(ordinal: usize) -> Result<Arc<CudaDevice>, NppErro
     Ok(dev)
 }
 
-/// Convenience wrapper: initialize device 0 (the default GPU).
-#[cfg(not(tarpaulin_include))]
-pub fn default_cuda_device() -> Result<Arc<CudaDevice>, NppError> {
-    initialize_cuda_device(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -33,7 +27,7 @@ mod tests {
     #[cfg_attr(not(feature = "gpu"), ignore)]
     #[test]
     fn test_cuda_initialize() {
-        let result = default_cuda_device();
+        let result = initialize_cuda_device(0);
         assert!(result.is_ok());
     }
 }

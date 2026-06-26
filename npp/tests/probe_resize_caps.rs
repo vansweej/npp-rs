@@ -16,7 +16,7 @@
 #![cfg(feature = "gpu")]
 
 use cudarc::driver::{CudaDevice, DevicePtrMut};
-use npp_rs::cuda::default_cuda_device;
+use npp_rs::cuda::initialize_cuda_device;
 use npp_rs::imageops::ResizeInterpolation;
 use npp_sys::{
     nppiResize_16s_C3R, nppiResize_16u_C3R, nppiResize_32f_C3R, nppiResize_8u_C3R, NppStatus,
@@ -245,7 +245,7 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
 
 #[test]
 fn probe_resize_caps() {
-    let device: Arc<CudaDevice> = default_cuda_device().expect("CUDA device init");
+    let device: Arc<CudaDevice> = initialize_cuda_device(0).expect("CUDA device init");
 
     // Types that have nppiResize_<t>_C3R symbols (from the corpus)
     let types = ["8u", "16u", "16s", "32f"];
