@@ -65,22 +65,32 @@ fn test_swap_channels_roi_u8_bgra_to_rgb() {
     // ── Route pointer extraction through accessor methods ──
     let src_ptr = view.device_ptr();
     let src_step_bytes = (view.layout.height_stride * std::mem::size_of::<u8>()) as i32;
-    let dst_ptr = *cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf) as *mut u8;
     let dst_step_bytes = (dst.layout.height_stride * std::mem::size_of::<u8>()) as i32;
+    // Precompute dst values before device_ptr_mut (avoids E0502 — SyncOnDrop
+    // keeps &mut dst.buf alive across drop scope).
+    let dst_w = dst.width();
+    let dst_h = dst.height();
+    let raw_ctx = view.ctx.raw_ctx();
 
-    crate::swap_channels_generated::swap_into_8u(
-        src_ptr,
-        src_step_bytes,
-        view.width(),
-        view.height(),
-        view.channels(),
-        dst_ptr,
-        dst_step_bytes,
-        dst.width(),
-        dst.height(),
-        view.ctx.raw_ctx(),
-    )
-    .expect("swap_into_8u ROI");
+    // ── FFI call: device_ptr_mut guard scoped to this block ──
+    {
+        let (dst_cu_ptr, _dst_guard) =
+            cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf, dst.ctx.stream());
+        let dst_ptr = dst_cu_ptr as *mut u8;
+        crate::swap_channels_generated::swap_into_8u(
+            src_ptr,
+            src_step_bytes,
+            view.width(),
+            view.height(),
+            view.channels(),
+            dst_ptr,
+            dst_step_bytes,
+            dst_w,
+            dst_h,
+            raw_ctx,
+        )
+        .expect("swap_into_8u ROI");
+    }
 
     let output: Vec<u8> = Vec::try_from(&dst).expect("read-back");
     assert_golden(&output, EXPECTED, "swap_channels ROI u8 BGRA->RGB");

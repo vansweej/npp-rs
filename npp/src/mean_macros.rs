@@ -83,52 +83,51 @@ macro_rules! impl_mean_for {
 
                 // ── Step 2: allocate scratch buffer on device ──
                 let mut scratch_buf: cudarc::driver::CudaSlice<u8> =
-                    self.ctx.device().alloc_zeros::<u8>(buffer_size)?;
+                    self.ctx.stream().alloc_zeros::<u8>(buffer_size)?;
 
                 // ── Step 3: allocate output buffer on device ──
                 let mut out_buf: cudarc::driver::CudaSlice<f64> =
-                    self.ctx.device().alloc_zeros::<f64>(ch as usize)?;
+                    self.ctx.stream().alloc_zeros::<f64>(ch as usize)?;
 
                 // nStep is in BYTES. height_stride counts elements. Convert.
                 let src_step_bytes =
                     (self.layout.height_stride * std::mem::size_of::<$rust_ty>()) as i32;
 
-                // ── Raw pointers via DevicePtr/DevicePtrMut ──
-                let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
-                let src_ptr = *src_base as *const $rust_ty;
-                let scratch_ptr = {
-                    let base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut scratch_buf);
-                    *base
-                };
-                let out_ptr = {
-                    let base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut out_buf);
-                    *base
-                };
-
-                // ── Step 4: compute mean ──
-                let status = unsafe {
-                    match ch {
-                        $(
-                            $ch => $mean_sym(
-                                src_ptr as *const _,
-                                src_step_bytes,
-                                nppi_size,
-                                scratch_ptr as *mut u8,
-                                out_ptr as *mut f64,
-                                self.ctx.raw_ctx(),
-                            ),
-                        )+
-                        _ => unreachable!(), // already handled above
+                // ── Step 4: compute mean (scoped to release SyncOnDrop guards before readback) ──
+                let status = {
+                    // Raw pointers via DevicePtr/DevicePtrMut — the SyncOnDrop guards
+                    // are scoped to this block and dropped after the FFI call, so
+                    // out_buf is available for the Step 5 readback.
+                    let (src_cu_ptr, _src_guard) =
+                        cudarc::driver::DevicePtr::device_ptr(&self.buf, self.ctx.stream());
+                    let src_ptr = src_cu_ptr as *const $rust_ty;
+                    let (scratch_cu_ptr, _scratch_guard) =
+                        cudarc::driver::DevicePtrMut::device_ptr_mut(&mut scratch_buf, self.ctx.stream());
+                    let scratch_ptr = scratch_cu_ptr as *mut u8;
+                    let (out_cu_ptr, _out_guard) =
+                        cudarc::driver::DevicePtrMut::device_ptr_mut(&mut out_buf, self.ctx.stream());
+                    let out_ptr = out_cu_ptr as *mut f64;
+                    unsafe {
+                        match ch {
+                            $(
+                                $ch => $mean_sym(
+                                    src_ptr as *const _,
+                                    src_step_bytes,
+                                    nppi_size,
+                                    scratch_ptr as *mut u8,
+                                    out_ptr as *mut f64,
+                                    self.ctx.raw_ctx(),
+                                ),
+                            )+
+                            _ => unreachable!(), // already handled above
+                        }
                     }
                 };
                 check_status(status)?;
 
                 // ── Step 5: read back results ──
-                // Readback uses the device handle through the StreamContext.
-                // The synchronize() fence is in TryFrom<&CudaImage>, but Mean
-                // does its own internal DtoH copy, so it also needs to go via
-                // the device handle from the context.
-                let result: Vec<f64> = self.ctx.device().dtoh_sync_copy(&out_buf)?;
+                // out_buf is no longer mutably borrowed (SyncOnDrop guards dropped).
+                let result: Vec<f64> = self.ctx.stream().clone_dtoh(&out_buf)?;
                 Ok(result)
             }
         }

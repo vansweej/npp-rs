@@ -13,7 +13,7 @@ autobenches = false
 [dependencies]
 npp-sys = { path = "../npp-sys" }
 # npp-sys = "0.0.1"  # release fallback
-cudarc = { version = "0.9", default-features = false, features = ["driver", "std"] }
+cudarc = { version = "=0.19.8", default-features = false, features = ["driver", "std", "cuda-12090", "dynamic-linking"] }
 thiserror = "2"
 # half = "2"  # TODO(M2): uncomment for half::f16 NppPixelType support
 

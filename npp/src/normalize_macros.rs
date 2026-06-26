@@ -103,30 +103,28 @@ macro_rules! impl_normalize_for {
 
                 let scale: f32 = 1.0_f32 / $denominator;
 
-                // SAFETY: The device pointer is valid because dst.buf is a
-                // live CudaSlice<f32> allocated from the same device. The
-                // img_index offset handles sub-image regions. MulC is
-                // elementwise, so aliasing src == dst is safe.
-                let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
-                let dst_ptr = *dst_base as *mut f32;
-
+                // Precompute all values before extracting device pointers (avoids
+                // E0502 borrow conflict — SyncOnDrop keeps the &mut dst.buf borrow alive).
                 let dst_step = (dst.layout.height_stride * std::mem::size_of::<f32>()) as i32;
-
+                let dst_ch = dst.channels();
                 let size = npp_sys::NppiSize {
                     width: dst.width() as i32,
                     height: dst.height() as i32,
                 };
+                let raw_ctx = dst.ctx.raw_ctx();
+
+                // SAFETY: The device pointer is valid because dst.buf is a
+                // live CudaSlice<f32> allocated from the same device. The
+                // img_index offset handles sub-image regions. MulC is
+                // elementwise, so aliasing src == dst is safe.
+                let (dst_cu_ptr, _dst_guard) =
+                    cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf, dst.ctx.stream());
+                let dst_ptr = dst_cu_ptr as *mut f32;
 
                 let status = unsafe {
-                    match dst.channels() {
+                    match dst_ch {
                         1 => npp_sys::nppiMulC_32f_C1R_Ctx(
-                            dst_ptr,
-                            dst_step,
-                            scale,
-                            dst_ptr,
-                            dst_step,
-                            size,
-                            dst.ctx.raw_ctx(),
+                            dst_ptr, dst_step, scale, dst_ptr, dst_step, size, raw_ctx,
                         ),
                         3 => {
                             let constants: [f32; 3] = [scale; 3];
@@ -137,7 +135,7 @@ macro_rules! impl_normalize_for {
                                 dst_ptr,
                                 dst_step,
                                 size,
-                                dst.ctx.raw_ctx(),
+                                raw_ctx,
                             )
                         }
                         4 => {
@@ -149,14 +147,13 @@ macro_rules! impl_normalize_for {
                                 dst_ptr,
                                 dst_step,
                                 size,
-                                dst.ctx.raw_ctx(),
+                                raw_ctx,
                             )
                         }
                         _ => {
                             return Err(NppError::InvalidArgument(format!(
                                 "unsupported channel count {} for normalize {}→f32",
-                                dst.channels(),
-                                $src_token,
+                                dst_ch, $src_token,
                             )));
                         }
                     }

@@ -15,7 +15,7 @@
 
 #![cfg(feature = "gpu")]
 
-use cudarc::driver::{CudaDevice, DevicePtrMut};
+use cudarc::driver::{CudaContext, CudaStream, DevicePtrMut};
 use npp_rs::cuda::initialize_cuda_device;
 use npp_rs::imageops::ResizeInterpolation;
 use npp_sys::{
@@ -46,9 +46,11 @@ fn inter_mode(m: ResizeInterpolation) -> i32 {
 }
 
 /// Extract a raw mutable device pointer from a CudaSlice.
-fn as_mut_ptr<T: cudarc::driver::DeviceRepr>(buf: &mut cudarc::driver::CudaSlice<T>) -> *mut T {
-    let base = DevicePtrMut::device_ptr_mut(buf);
-    *base as *mut T
+fn as_mut_ptr<T: cudarc::driver::DeviceRepr>(
+    buf: &mut cudarc::driver::CudaSlice<T>,
+    stream: &CudaStream,
+) -> *mut T {
+    DevicePtrMut::device_ptr_mut(buf, stream).0 as *mut T
 }
 
 /// Classify the NPP status and return true for supported, false for unsupported.
@@ -64,7 +66,7 @@ fn classify_status(type_token: &str, inter: ResizeInterpolation, status: NppStat
 
 /// Test a single (type_token, interpolation) pair.
 /// Returns true if the pair is supported (status >= 0).
-fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation) -> bool {
+fn test_pair(stream: &Arc<CudaStream>, type_token: &str, inter: ResizeInterpolation) -> bool {
     let (src_w, src_h) = (SRC_W as usize, SRC_H as usize);
     let (dst_w, dst_h) = (DST_W as usize, DST_H as usize);
     let ch = 3usize;
@@ -75,8 +77,8 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
     unsafe {
         match type_token {
             "8u" => {
-                let mut src_buf = dev.alloc_zeros::<u8>(src_len).expect("alloc src");
-                let mut dst_buf = dev.alloc_zeros::<u8>(dst_len).expect("alloc dst");
+                let mut src_buf = stream.alloc_zeros::<u8>(src_len).expect("alloc src");
+                let mut dst_buf = stream.alloc_zeros::<u8>(dst_len).expect("alloc dst");
 
                 let src_step = (SRC_W * ch as i32) as i32;
                 let dst_step = (DST_W * ch as i32) as i32;
@@ -103,11 +105,11 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
                 };
 
                 let status = nppiResize_8u_C3R(
-                    as_mut_ptr(&mut src_buf) as *const _,
+                    as_mut_ptr(&mut src_buf, stream.as_ref()) as *const _,
                     src_step,
                     src_size,
                     src_roi,
-                    as_mut_ptr(&mut dst_buf) as *mut _,
+                    as_mut_ptr(&mut dst_buf, &*stream) as *mut _,
                     dst_step,
                     dst_size,
                     dst_roi,
@@ -116,8 +118,8 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
                 classify_status(type_token, inter, status)
             }
             "16u" => {
-                let mut src_buf = dev.alloc_zeros::<u16>(src_len).expect("alloc src");
-                let mut dst_buf = dev.alloc_zeros::<u16>(dst_len).expect("alloc dst");
+                let mut src_buf = stream.alloc_zeros::<u16>(src_len).expect("alloc src");
+                let mut dst_buf = stream.alloc_zeros::<u16>(dst_len).expect("alloc dst");
 
                 let src_step = (SRC_W * ch as i32 * 2) as i32;
                 let dst_step = (DST_W * ch as i32 * 2) as i32;
@@ -144,11 +146,11 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
                 };
 
                 let status = nppiResize_16u_C3R(
-                    as_mut_ptr(&mut src_buf) as *const _,
+                    as_mut_ptr(&mut src_buf, stream.as_ref()) as *const _,
                     src_step,
                     src_size,
                     src_roi,
-                    as_mut_ptr(&mut dst_buf) as *mut _,
+                    as_mut_ptr(&mut dst_buf, &*stream) as *mut _,
                     dst_step,
                     dst_size,
                     dst_roi,
@@ -157,8 +159,8 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
                 classify_status(type_token, inter, status)
             }
             "16s" => {
-                let mut src_buf = dev.alloc_zeros::<i16>(src_len).expect("alloc src");
-                let mut dst_buf = dev.alloc_zeros::<i16>(dst_len).expect("alloc dst");
+                let mut src_buf = stream.alloc_zeros::<i16>(src_len).expect("alloc src");
+                let mut dst_buf = stream.alloc_zeros::<i16>(dst_len).expect("alloc dst");
 
                 let src_step = (SRC_W * ch as i32 * 2) as i32;
                 let dst_step = (DST_W * ch as i32 * 2) as i32;
@@ -185,11 +187,11 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
                 };
 
                 let status = nppiResize_16s_C3R(
-                    as_mut_ptr(&mut src_buf) as *const _,
+                    as_mut_ptr(&mut src_buf, stream.as_ref()) as *const _,
                     src_step,
                     src_size,
                     src_roi,
-                    as_mut_ptr(&mut dst_buf) as *mut _,
+                    as_mut_ptr(&mut dst_buf, &*stream) as *mut _,
                     dst_step,
                     dst_size,
                     dst_roi,
@@ -198,8 +200,8 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
                 classify_status(type_token, inter, status)
             }
             "32f" => {
-                let mut src_buf = dev.alloc_zeros::<f32>(src_len).expect("alloc src");
-                let mut dst_buf = dev.alloc_zeros::<f32>(dst_len).expect("alloc dst");
+                let mut src_buf = stream.alloc_zeros::<f32>(src_len).expect("alloc src");
+                let mut dst_buf = stream.alloc_zeros::<f32>(dst_len).expect("alloc dst");
 
                 let src_step = (SRC_W * ch as i32 * 4) as i32;
                 let dst_step = (DST_W * ch as i32 * 4) as i32;
@@ -226,11 +228,11 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
                 };
 
                 let status = nppiResize_32f_C3R(
-                    as_mut_ptr(&mut src_buf) as *const _,
+                    as_mut_ptr(&mut src_buf, stream.as_ref()) as *const _,
                     src_step,
                     src_size,
                     src_roi,
-                    as_mut_ptr(&mut dst_buf) as *mut _,
+                    as_mut_ptr(&mut dst_buf, &*stream) as *mut _,
                     dst_step,
                     dst_size,
                     dst_roi,
@@ -245,7 +247,8 @@ fn test_pair(dev: &Arc<CudaDevice>, type_token: &str, inter: ResizeInterpolation
 
 #[test]
 fn probe_resize_caps() {
-    let device: Arc<CudaDevice> = initialize_cuda_device(0).expect("CUDA device init");
+    let device: Arc<CudaContext> = initialize_cuda_device(0).expect("CUDA device init");
+    let stream: Arc<CudaStream> = device.new_stream().expect("create stream");
 
     // Types that have nppiResize_<t>_C3R symbols (from the corpus)
     let types = ["8u", "16u", "16s", "32f"];
@@ -261,7 +264,7 @@ fn probe_resize_caps() {
 
     for t in &types {
         for m in &modes {
-            if test_pair(&device, t, *m) {
+            if test_pair(&stream, t, *m) {
                 supported.push((*t, *m));
             }
         }

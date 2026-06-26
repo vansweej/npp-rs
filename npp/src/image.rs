@@ -3,7 +3,7 @@
 use crate::error::NppError;
 use crate::layout::CudaLayout;
 use crate::stream::StreamContext;
-use cudarc::driver::{CudaDevice, CudaSlice, CudaView, CudaViewMut};
+use cudarc::driver::{CudaContext, CudaSlice, CudaView, CudaViewMut};
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -149,14 +149,14 @@ impl<T: NppPixelType> CudaImage<T> {
     ) -> Result<Self, NppError> {
         validate_dims(channels, width, height)?;
         let num_elements = (width as usize) * (height as usize) * (channels as usize);
-        let buf = ctx.device().alloc_zeros::<T>(num_elements)?;
+        let buf = ctx.stream().alloc_zeros::<T>(num_elements)?;
         let layout = CudaLayout::row_major_packed(channels, width, height);
         Ok(CudaImage { ctx, buf, layout })
     }
 
     /// Reference to the underlying CUDA device (shared from the [`StreamContext`]).
     #[cfg(not(tarpaulin_include))]
-    pub fn device(&self) -> &Arc<CudaDevice> {
+    pub fn device(&self) -> &Arc<CudaContext> {
         self.ctx.device()
     }
 
@@ -194,7 +194,7 @@ impl<T: NppPixelType> CudaImage<T> {
                 expected_len
             )));
         }
-        let buf = ctx.device().htod_sync_copy(data)?;
+        let buf = ctx.stream().clone_htod(data)?;
         let layout = CudaLayout::row_major_packed(channels, width, height);
         Ok(CudaImage { ctx, buf, layout })
     }
@@ -398,11 +398,19 @@ impl<'a, T: NppPixelType> CudaImageView<'a, T> {
     /// Extract the raw device pointer for NPP calls.
     ///
     /// See `docs/spike-cudarc-ptr-bridge.md` for the authoritative pattern.
+    ///
+    /// # SyncOnDrop guard lifetime
+    ///
+    /// The `SyncOnDrop` guard returned by `device_ptr(stream)` lives within this
+    /// function scope. The caller must ensure the resulting `*const T` is used
+    /// before the guard is dropped (i.e., pass it immediately to an NPP FFI call
+    /// in the same enclosing scope).
     #[allow(dead_code)]
     #[cfg(not(tarpaulin_include))]
     pub(crate) fn device_ptr(&self) -> *const T {
-        let cu_ptr = cudarc::driver::DevicePtr::device_ptr(&self.view);
-        *cu_ptr as *const T
+        let stream = self.ctx.stream();
+        let (cu_ptr, _guard) = cudarc::driver::DevicePtr::device_ptr(&self.view, stream);
+        cu_ptr as *const T
     }
 }
 
@@ -455,11 +463,19 @@ impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
     /// Extract the raw mutable device pointer for NPP calls.
     ///
     /// See `docs/spike-cudarc-ptr-bridge.md` for the authoritative pattern.
+    ///
+    /// # SyncOnDrop guard lifetime
+    ///
+    /// The `SyncOnDrop` guard returned by `device_ptr_mut(stream)` lives within
+    /// this function scope. The caller must ensure the resulting `*mut T` is
+    /// used before the guard is dropped (i.e., pass it immediately to an NPP
+    /// FFI call in the same enclosing scope).
     #[allow(dead_code)]
     #[cfg(not(tarpaulin_include))]
     pub(crate) fn device_ptr_mut(&mut self) -> *mut T {
-        let cu_ptr = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut self.view);
-        *cu_ptr as *mut T
+        let stream = self.ctx.stream();
+        let (cu_ptr, _guard) = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut self.view, stream);
+        cu_ptr as *mut T
     }
 }
 
@@ -472,10 +488,9 @@ impl<'a, T: NppPixelType> CudaImageViewMut<'a, T> {
 ///
 /// 1. A host-blocking [`StreamContext::synchronize()`] on the forked stream
 ///    (the "fence"), ensuring all prior `_Ctx` work is complete.
-/// 2. A synchronous DtoH copy on the **NULL stream** via `dtoh_sync_copy`
-///    (cudarc 0.9 does not expose a stream-targeted DtoH API).
+/// 2. A per-stream DtoH copy via `stream.clone_dtoh` (cudarc 0.19.x).
 ///
-/// The fence in step 1 makes step 2 safe. Without it, the NULL-stream copy
+/// The fence in step 1 makes step 2 safe. Without it, the stream copy
 /// could race with the forked-stream NPP work.
 ///
 /// See [`docs/stream-context.md`](https://github.com/vansweej/npp-rs/blob/main/docs/stream-context.md)
@@ -487,8 +502,8 @@ impl<T: NppPixelType> TryFrom<&CudaImage<T>> for Vec<T> {
     fn try_from(img: &CudaImage<T>) -> Result<Self, Self::Error> {
         // Step 1: host fence — block until all forked-stream work is done
         img.ctx.synchronize()?;
-        // Step 2: NULL-stream DtoH copy (cudarc's only DtoH path)
-        let host: Vec<T> = img.ctx.device().dtoh_sync_copy(&img.buf)?;
+        // Step 2: per-stream DtoH copy via CudaStream::clone_dtoh
+        let host: Vec<T> = img.ctx.stream().clone_dtoh(&img.buf)?;
         Ok(host)
     }
 }
@@ -498,8 +513,9 @@ impl<T: NppPixelType> TryFrom<&CudaImage<T>> for Vec<T> {
 /// # Ordering contract
 ///
 /// Identical to the owned `TryFrom<&CudaImage<T>>` path: a host-blocking
-/// [`StreamContext::synchronize`] fence, then a NULL-stream DtoH copy. The
-/// fence makes the NULL-stream copy safe against forked-stream NPP work.
+/// [`StreamContext::synchronize`] fence, then a per-stream DtoH copy via
+/// `stream.clone_dtoh`. The fence makes the stream copy safe against
+/// forked-stream NPP work.
 ///
 /// # Strided result
 ///
@@ -513,11 +529,9 @@ impl<'a, T: NppPixelType> TryFrom<&CudaImageView<'a, T>> for Vec<T> {
 
     fn try_from(v: &CudaImageView<'a, T>) -> Result<Self, Self::Error> {
         v.ctx.synchronize()?;
-        let len = cudarc::driver::DeviceSlice::len(&v.view);
-        // NppPixelType: ValidAsZeroBits + Copy, so a zeroed host buffer is a
-        // valid T; the copy fully overwrites it before any read.
-        let mut host: Vec<T> = vec![unsafe { std::mem::zeroed::<T>() }; len];
-        v.ctx.device().dtoh_sync_copy_into(&v.view, &mut host)?;
+        // Per-stream DtoH copy via CudaStream::clone_dtoh.
+        // clone_dtoh returns a new Vec<T>, replacing the manual zeroed-buffer pattern.
+        let host: Vec<T> = v.ctx.stream().clone_dtoh(&v.view)?;
         Ok(host)
     }
 }

@@ -119,20 +119,26 @@ macro_rules! impl_convert_rounded_scaled_for {
                 let dst_step_bytes =
                     (dst.layout.height_stride * std::mem::size_of::<$dst_ty>()) as i32;
 
-                // ── Raw pointers via DevicePtr/DevicePtrMut ──
-                let src_base = cudarc::driver::DevicePtr::device_ptr(&self.buf);
-                let src_ptr = *src_base as *const $src_ty;
-
-                let dst_base = cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf);
-                let dst_ptr = *dst_base as *mut $dst_ty;
-
+                // Precompute all values before extracting device pointers (avoids
+                // E0502 borrow conflict — SyncOnDrop keeps the &mut dst.buf borrow alive).
+                let ch = self.channels();
                 let nppi_size = NppiSize {
                     width: dst.width() as i32,
                     height: dst.height() as i32,
                 };
+                let raw_ctx = self.ctx.raw_ctx();
+
+                // ── Raw pointers via DevicePtr/DevicePtrMut ──
+                let (src_cu_ptr, _src_guard) =
+                    cudarc::driver::DevicePtr::device_ptr(&self.buf, self.ctx.stream());
+                let src_ptr = src_cu_ptr as *const $src_ty;
+
+                let (dst_cu_ptr, _dst_guard) =
+                    cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf, dst.ctx.stream());
+                let dst_ptr = dst_cu_ptr as *mut $dst_ty;
 
                 let status = unsafe {
-                    match self.channels() {
+                    match ch {
                         $(
                             $ch => $sym(
                                 src_ptr as *const _,
@@ -142,13 +148,13 @@ macro_rules! impl_convert_rounded_scaled_for {
                                 nppi_size,
                                 $crate::convert_round_ops::round_mode(mode),
                                 scale_factor,
-                                self.ctx.raw_ctx(),
+                                raw_ctx,
                             ),
                         )+
                         _ => {
                             return Err(NppError::InvalidArgument(format!(
                                 "unsupported channel count {} for convert_rounded_scaled {} → {}",
-                                self.channels(),
+                                ch,
                                 $src_token,
                                 $dst_token,
                             )));

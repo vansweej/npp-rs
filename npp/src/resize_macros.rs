@@ -144,14 +144,25 @@ macro_rules! impl_resize_for {
                     (self.layout.height_stride * std::mem::size_of::<$rust_ty>()) as i32;
                 let dst_step_bytes =
                     (dst.layout.height_stride * std::mem::size_of::<$rust_ty>()) as i32;
-                let src_ptr =
-                    *cudarc::driver::DevicePtr::device_ptr(&self.buf) as *const $rust_ty;
-                let dst_ptr =
-                    *cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf) as *mut $rust_ty;
+                // Precompute all values before extracting device pointers (avoids
+                // E0502 borrow conflict — SyncOnDrop keeps the &mut dst.buf borrow
+                // alive across its drop scope).
+                let src_w = self.width();
+                let src_h = self.height();
+                let ch = self.channels();
+                let dst_w = dst.width();
+                let dst_h = dst.height();
+                let raw_ctx = self.ctx.raw_ctx();
+                let (src_cu_ptr, _src_guard) =
+                    cudarc::driver::DevicePtr::device_ptr(&self.buf, self.ctx.stream());
+                let src_ptr = src_cu_ptr as *const $rust_ty;
+                let (dst_cu_ptr, _dst_guard) =
+                    cudarc::driver::DevicePtrMut::device_ptr_mut(&mut dst.buf, dst.ctx.stream());
+                let dst_ptr = dst_cu_ptr as *mut $rust_ty;
                 $fn_name(
-                    src_ptr, src_step_bytes, self.width(), self.height(), self.channels(),
-                    dst_ptr, dst_step_bytes, dst.width(), dst.height(),
-                    inter, self.ctx.raw_ctx(),
+                    src_ptr, src_step_bytes, src_w, src_h, ch,
+                    dst_ptr, dst_step_bytes, dst_w, dst_h,
+                    inter, raw_ctx,
                 )
             }
         }
