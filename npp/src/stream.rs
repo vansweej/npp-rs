@@ -200,9 +200,7 @@ impl StreamContext {
     pub fn elapsed(&self, start: &Event, end: &Event) -> Result<Duration, NppError> {
         // SAFETY: start.inner and end.inner are valid CUevents created by
         // record_event. Both were recorded on this stream (or a compatible one).
-        let ms = unsafe {
-            result::event::elapsed(start.inner, end.inner)?
-        };
+        let ms = unsafe { result::event::elapsed(start.inner, end.inner)? };
         Ok(Duration::from_secs_f64(ms as f64 / 1_000.0))
     }
 }

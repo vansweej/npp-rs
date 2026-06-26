@@ -18,7 +18,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use criterion::{black_box, Criterion, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{Resize, ResizeInterpolation};
 use npp_rs::stream::StreamContext;
@@ -65,8 +65,7 @@ fn bench_resize_size(c: &mut Criterion) {
 
     for &size in SIZES {
         let src = make_input(&ctx, MAX_SIZE, MAX_SIZE);
-        let mut dst = CudaImage::<u8>::new(ctx.clone(), 3, size, size)
-            .expect("dst allocation");
+        let mut dst = CudaImage::<u8>::new(ctx.clone(), 3, size, size).expect("dst allocation");
 
         // Warm-up: run once outside the timed loop to prime caches and catch
         // hard errors early. Asserts nothing on output.
@@ -82,9 +81,7 @@ fn bench_resize_size(c: &mut Criterion) {
                     start.record();
                     // SAFETY: black_box prevents the compiler from hoisting
                     // or eliminating the call.
-                    let _ = black_box(
-                        src.resize(&mut dst, ResizeInterpolation::Linear)
-                    );
+                    let _ = black_box(src.resize(&mut dst, ResizeInterpolation::Linear));
                     let end = ctx.record_event();
                     end.record();
 
@@ -92,8 +89,7 @@ fn bench_resize_size(c: &mut Criterion) {
                     // captures the full operation.
                     ctx.device_fence().expect("fence after resize");
 
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })

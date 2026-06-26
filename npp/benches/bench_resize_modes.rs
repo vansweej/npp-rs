@@ -17,7 +17,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use criterion::{black_box, Criterion, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{Resize, ResizeInterpolation};
 use npp_rs::stream::StreamContext;
@@ -79,8 +79,7 @@ fn bench_resize_modes(c: &mut Criterion) {
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })
@@ -119,8 +118,7 @@ fn bench_resize_channels(c: &mut Criterion) {
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })

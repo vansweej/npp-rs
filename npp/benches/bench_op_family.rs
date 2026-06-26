@@ -28,7 +28,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use criterion::{black_box, Criterion, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use npp_rs::image::CudaImage;
 use npp_rs::imageops::{ConvertTo, Mean, Normalize, Resize, ResizeInterpolation, SwapChannels};
 use npp_rs::stream::StreamContext;
@@ -65,12 +65,12 @@ fn bench_op_family(c: &mut Criterion) {
 
     let mut dst_resize = CudaImage::<u8>::new(ctx.clone(), 3, BENCH_SIZE / 2, BENCH_SIZE / 2)
         .expect("resize dst alloc");
-    let mut dst_swap = CudaImage::<u8>::new(ctx.clone(), 3, BENCH_SIZE, BENCH_SIZE)
-        .expect("swap dst alloc");
-    let mut dst_convert = CudaImage::<f32>::new(ctx.clone(), 3, BENCH_SIZE, BENCH_SIZE)
-        .expect("convert dst alloc");
-    let mut dst_norm = CudaImage::<f32>::new(ctx.clone(), 3, BENCH_SIZE, BENCH_SIZE)
-        .expect("normalize dst alloc");
+    let mut dst_swap =
+        CudaImage::<u8>::new(ctx.clone(), 3, BENCH_SIZE, BENCH_SIZE).expect("swap dst alloc");
+    let mut dst_convert =
+        CudaImage::<f32>::new(ctx.clone(), 3, BENCH_SIZE, BENCH_SIZE).expect("convert dst alloc");
+    let mut dst_norm =
+        CudaImage::<f32>::new(ctx.clone(), 3, BENCH_SIZE, BENCH_SIZE).expect("normalize dst alloc");
     // Mean writes to device memory internally; no separate dst CudaImage needed.
     // The result Vec<f64> is produced by the method.
 
@@ -81,7 +81,8 @@ fn bench_op_family(c: &mut Criterion) {
     // --- Resize (Linear, 3ch, downscale 2×) ---
     {
         // Warm-up
-        src_3ch.resize(&mut dst_resize, ResizeInterpolation::Linear)
+        src_3ch
+            .resize(&mut dst_resize, ResizeInterpolation::Linear)
             .expect("resize warm-up");
 
         group.bench_function("Resize_Linear_down2x", |b| {
@@ -90,14 +91,11 @@ fn bench_op_family(c: &mut Criterion) {
                 for _ in 0..iters {
                     let start = ctx.record_event();
                     start.record();
-                    let _ = black_box(
-                        src_3ch.resize(&mut dst_resize, ResizeInterpolation::Linear)
-                    );
+                    let _ = black_box(src_3ch.resize(&mut dst_resize, ResizeInterpolation::Linear));
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })
@@ -107,8 +105,7 @@ fn bench_op_family(c: &mut Criterion) {
     // --- SwapChannels (4ch→3ch, BGRA→RGB, same-size) ---
     {
         // Warm-up
-        src_4ch.bgra_to_rgb(&mut dst_swap)
-            .expect("swap warm-up");
+        src_4ch.bgra_to_rgb(&mut dst_swap).expect("swap warm-up");
 
         group.bench_function("SwapChannels_BGRAtoRGB", |b| {
             b.iter_custom(|iters| {
@@ -120,8 +117,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })
@@ -139,14 +135,11 @@ fn bench_op_family(c: &mut Criterion) {
                 for _ in 0..iters {
                     let start = ctx.record_event();
                     start.record();
-                    let _: Vec<f64> = black_box(
-                        src_3ch.mean().expect("mean")
-                    );
+                    let _: Vec<f64> = black_box(src_3ch.mean().expect("mean"));
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })
@@ -156,7 +149,8 @@ fn bench_op_family(c: &mut Criterion) {
     // --- ConvertTo (u8→f32, 3ch, same-size) ---
     {
         // Warm-up
-        src_3ch.convert_to(&mut dst_convert)
+        src_3ch
+            .convert_to(&mut dst_convert)
             .expect("convert warm-up");
 
         group.bench_function("ConvertTo_u8_to_f32", |b| {
@@ -169,8 +163,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })
@@ -180,7 +173,8 @@ fn bench_op_family(c: &mut Criterion) {
     // --- Normalize (u8→f32, 3ch, min=0, max=255, same-size) ---
     {
         // Warm-up
-        src_3ch.normalize(&mut dst_norm, 0.0, 255.0)
+        src_3ch
+            .normalize(&mut dst_norm, 0.0, 255.0)
             .expect("normalize warm-up");
 
         group.bench_function("Normalize_u8_to_f32_min0_max255", |b| {
@@ -193,8 +187,7 @@ fn bench_op_family(c: &mut Criterion) {
                     let end = ctx.record_event();
                     end.record();
                     ctx.device_fence().expect("fence");
-                    total += ctx.elapsed(&start, &end)
-                        .expect("cuEventElapsedTime");
+                    total += ctx.elapsed(&start, &end).expect("cuEventElapsedTime");
                 }
                 total
             })
